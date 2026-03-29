@@ -1,14 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Cho phép chạy trên môi trường Edge của Cloudflare
-  typescript: {
-    ignoreBuildErrors: true, // Bỏ qua lỗi ép kiểu để build nhanh
-  },
-  eslint: {
-    ignoreDuringBuilds: true, // Bỏ qua lỗi format
-  },
+  /* Các tùy chọn khác nếu bồ cần */
   images: {
-    unoptimized: true, // Bắt buộc nếu dùng Cloudflare Pages
+    unoptimized: true, 
   },
+  // Next.js 16 đôi khi kén chọn phần typescript/eslint config cũ
+  // nên mình tạm thời ẩn chúng đi để nó build cho xong
 };
+
+export default nextConfig;
