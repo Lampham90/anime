@@ -60,7 +60,7 @@ export default function Footer() {
         {/* Bản quyền */}
         <div className="border-t border-white/5 pt-8 text-center">
           <p className="text-white/20 text-[10px] uppercase tracking-[0.3em] font-bold">
-            © {new Date().getFullYear()} MYCINEMA. Coded with ❤️ by Gemini.
+            © {new Date().getFullYear()} MYCINEMA. 
           </p>
         </div>
       </div>

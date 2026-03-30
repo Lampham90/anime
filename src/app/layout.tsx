@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import ScrollToTop from "@/components/ScrollToTop"; // 1. Import component vào đây
 import { Montserrat } from 'next/font/google';
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
 export const metadata: Metadata = {
-  title: "GeminiFlix - Cinema Experience",
+  title: "CineVip",
   description: "Hệ thống xem phim đẳng cấp, trải nghiệm điện ảnh 4K",
 };
 
@@ -36,6 +37,9 @@ export default function RootLayout({
 
         {/* FOOTER - CHÂN TRANG */}
         <Footer />
+
+        {/* 2. CHÈN SCROLL TO TOP Ở ĐÂY */}
+        <ScrollToTop />
 
       </body>
     </html>
