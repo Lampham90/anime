@@ -19,7 +19,7 @@ export default function Footer() {
               </h2>
             </Link>
             <p className="text-white/40 text-sm leading-relaxed italic">
-              
+              2026 MyStream Project
             </p>
           </div>
 
