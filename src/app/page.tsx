@@ -18,7 +18,7 @@ const WORKERS = [
 const ORIGIN_IMG = "https://img.ophim.live/uploads/movies/";
 
 const TRENDING_SLUGS = [
-  "truc-ngoc", "one-piece-phan-2", "nu-hon-siren", "luat-su-bong-ma",
+  "truc-ngoc", "avatar-3-lua-va-tro-tan", "nu-hon-siren", "luat-su-bong-ma",
   "frieren-phap-su-tien-tang-phan-2", "chu-thuat-hoi-chien-phan-3",
   "boyfriend-on-demand", "mua-mua-khuynh-thanh", "van-phuc-kim-an", "cai-ten-an-danh",
 ];
