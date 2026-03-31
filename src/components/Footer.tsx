@@ -15,11 +15,11 @@ export default function Footer() {
           <div className="col-span-1 md:col-span-1">
             <Link href="/">
               <h2 className="text-2xl font-black italic tracking-tighter text-white mb-6">
-                MY<span className="text-red-600">CINEMA</span>
+                MY<span className="text-red-600">STREAM</span>
               </h2>
             </Link>
             <p className="text-white/40 text-sm leading-relaxed italic">
-              2026 MyStream Project
+              2026 MyStream Project - Đây là dự án Demo, học tập 
             </p>
           </div>
 
@@ -60,7 +60,7 @@ export default function Footer() {
         {/* Bản quyền */}
         <div className="border-t border-white/5 pt-8 text-center">
           <p className="text-white/20 text-[10px] uppercase tracking-[0.3em] font-bold">
-            © {new Date().getFullYear()} MYCINEMA. 
+            © {new Date().getFullYear()} MYSTREAM. 
           </p>
         </div>
       </div>
