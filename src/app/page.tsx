@@ -9,79 +9,93 @@ import { Montserrat } from 'next/font/google';
 import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
 
 if (typeof window !== "undefined") {
-  init({ throttle: 50 });
+  init({ throttle: 12, blockScroll: true, visualDebug: false }); 
 }
 
-const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
+const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['900'] });
 
 const CONFIG = {
   WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
-  ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
+  ORIGIN_IMG: "https://img.ophim.live/uploads/movies/", 
   COLS: 7,
   ITEMS_PER_PAGE: 14 
 };
 
 const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }: any) => {
   const router = useRouter();
-  const [isLoaded, setIsLoaded] = useState(false);
+
+  const handlePress = useCallback(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("last_slug", movie.slug);
+      sessionStorage.setItem("last_page", currentPage.toString());
+    }
+    router.push(`/phim/${movie.slug}`);
+  }, [movie.slug, currentPage, router]);
 
   const { ref, focused } = useFocusable({
     focusKey: `MOVIE_${movie.slug}`,
-    onEnterPress: () => {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("last_slug", movie.slug);
-        sessionStorage.setItem("last_page", currentPage.toString());
-      }
-      router.push(`/phim/${movie.slug}`);
-    },
+    onEnterPress: handlePress,
     onArrowPress: (dir) => {
-      if (dir === 'up' && index < CONFIG.COLS) {
-        if (currentPage > 1) { onPageChange(currentPage - 1, 'BOTTOM', index); return false; }
-        router.push('/search'); return false;
+      if (dir === 'up' && index < CONFIG.COLS && currentPage > 1) {
+        onPageChange(currentPage - 1, 'BOTTOM', index); return false;
       }
-      if (dir === 'down' && index >= CONFIG.COLS) {
-        if (currentPage < totalPages) { onPageChange(currentPage + 1, 'TOP', index - CONFIG.COLS); return false; }
+      if (dir === 'down' && index >= CONFIG.COLS && currentPage < totalPages) {
+        onPageChange(currentPage + 1, 'TOP', index - CONFIG.COLS); return false;
       }
       return true;
     }
   });
 
   const imgUrl = useMemo(() => {
-    const raw = movie.thumb_url || movie.poster_url || "";
+    const raw = movie.thumb_url || movie.poster_url || ""; 
+    if (!raw) return "";
     const base = raw.startsWith('http') ? raw : `${CONFIG.ORIGIN_IMG}${raw}`;
-    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=300&fit=cover&output=webp&q=90&sharp=1`;
-  }, [movie.slug, movie.thumb_url, movie.poster_url]);
+    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=200&fit=cover&output=webp&q=60`;
+  }, [movie.thumb_url]);
 
-  const badges = useMemo(() => {
-    const ep = movie.episode_current?.toLowerCase() || "";
-    const isFull = ep.includes("full") || ep.includes("hoàn tất") || ep === "1/1" || ep === "";
-    const lang = movie.lang?.toUpperCase() || "";
-    let cleanLang = null;
-    if (lang.includes("THUYẾT MINH") || lang.includes("TM")) cleanLang = "TM";
-    else if (lang.includes("LỒNG TIẾNG") || lang.includes("LT")) cleanLang = "LT";
-    return { ep: !isFull ? movie.episode_current : null, lang: cleanLang };
-  }, [movie.episode_current, movie.lang]);
+  // FIX LỖI "2525": Tách lấy số tập chuẩn
+  const badge = useMemo(() => {
+    const lang = movie.lang?.toLowerCase() || "";
+    const rawEp = movie.episode_current || "";
+    
+    let label = "";
+    if (lang.includes("lồng tiếng")) label = "LT";
+    else if (lang.includes("thuyết minh")) label = "TM";
+
+    // Logic mới: Tìm số đầu tiên trong chuỗi (ví dụ "25/25" -> "25", "Tập 12" -> "12")
+    const match = rawEp.match(/\d+/);
+    const epNumber = match ? match[0] : "";
+
+    return { label, ep: epNumber };
+  }, [movie.lang, movie.episode_current]);
 
   return (
-    <div ref={ref} className={`relative flex flex-col transition-all duration-200 transform-gpu cursor-pointer ${focused ? "scale-110 z-50 opacity-100" : "scale-100 opacity-60"}`}>
-      <div className={`aspect-[2/3] w-full rounded-2xl overflow-hidden relative bg-zinc-800 transition-all duration-300 shadow-2xl ${
-        focused ? "ring-[6px] ring-white shadow-[0_0_50px_rgba(255,255,255,0.5)] brightness-125 contrast-110" : "border-2 border-white/10 brightness-110"
+    <div 
+      ref={ref} 
+      className="relative flex flex-col items-center"
+      style={{ 
+        transform: focused ? 'scale3d(1.1, 1.1, 1)' : 'scale3d(1, 1, 1)',
+        transition: 'transform 0.15s ease-out',
+        willChange: 'transform',
+        zIndex: focused ? 10 : 1
+      }}
+    >
+      <div className={`relative aspect-[2/3] w-full rounded-[25px] overflow-hidden bg-zinc-900 border-2 transition-all duration-300 ${
+        focused ? "border-white opacity-100 shadow-2xl" : "border-transparent opacity-70"
       }`}>
-        <img 
-          src={imgUrl} 
-          onLoad={() => setIsLoaded(true)}
-          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`} 
-          alt={movie.name}
-        />
-        <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-10 pointer-events-none font-black scale-110">
-            {badges.ep && <div className="bg-red-600 text-white text-[10px] px-2.5 py-1 rounded-lg shadow-lg uppercase">{badges.ep}</div>}
-            {badges.lang && <div className="bg-yellow-400 text-black text-[10px] px-2.5 py-1 rounded-lg shadow-lg">{badges.lang}</div>}
+        <img src={imgUrl} decoding="async" className="w-full h-full object-cover" alt="" />
+        
+        {/* Nhãn góc phải */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+          {badge.label && <span className="bg-red-600 text-white font-black px-2 py-0.5 rounded italic text-[9px] shadow-md">{badge.label}</span>}
+          {badge.ep && <span className="bg-black/80 text-white font-black px-2 py-0.5 rounded text-[9px] border border-white/10 shadow-md">TẬP {badge.ep}</span>}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60" />
       </div>
-      <div className="mt-3.5 px-1 h-10 overflow-hidden flex items-start justify-center text-center">
-        <p className={`text-[12.5px] uppercase italic leading-tight transition-all duration-300 tracking-wide line-clamp-2 ${
-          focused ? 'text-white font-black drop-shadow-[0_2px_10px_rgba(255,255,255,0.8)]' : 'text-zinc-100 font-black drop-shadow-[0_2px_6px_rgba(0,0,0,1)]'
+
+      {/* Tựa phim to rõ tiếng Việt */}
+      <div className="mt-3 h-10 w-full overflow-hidden">
+        <p className={`uppercase italic font-black tracking-tighter text-center line-clamp-2 px-1 transition-all duration-200 ${
+          focused ? 'text-white text-[13px] leading-tight scale-105' : 'text-zinc-600 text-[11px] leading-tight'
         }`}>
           {movie.name}
         </p>
@@ -89,36 +103,32 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
     </div>
   );
 });
+MovieCard.displayName = "MovieCard";
 
-export default function HoatHinhHome() {
+export default function Home() {
   const [allMovies, setAllMovies] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
   useEffect(() => {
-    setIsClient(true);
-    const controller = new AbortController();
-    fetch(`${CONFIG.WORKER}/v1/api/danh-sach/hoat-hinh?limit=280`, { signal: controller.signal })
+    fetch(`${CONFIG.WORKER}/v1/api/danh-sach/hoat-hinh?limit=280`)
       .then(r => r.json())
       .then(res => {
         const items = res?.data?.items || [];
         setAllMovies(items);
         setLoading(false);
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           const lastSlug = sessionStorage.getItem("last_slug");
-          const lastPage = sessionStorage.getItem("last_page");
-          if (lastSlug && lastPage) {
-            setCurrentPage(parseInt(lastPage));
-            setFocus(`MOVIE_${lastSlug}`);
+          if (lastSlug) {
+            setCurrentPage(parseInt(sessionStorage.getItem("last_page") || "1"));
+            setTimeout(() => setFocus(`MOVIE_${lastSlug}`), 20);
             sessionStorage.removeItem("last_slug");
           } else if (items.length > 0) {
             setFocus(`MOVIE_${items[0].slug}`);
           }
-        }, 100);
-      }).catch(() => setLoading(false));
-    return () => controller.abort();
+        });
+      });
   }, []);
 
   const currentItems = useMemo(() => {
@@ -126,36 +136,33 @@ export default function HoatHinhHome() {
     return allMovies.slice(s, s + CONFIG.ITEMS_PER_PAGE);
   }, [allMovies, currentPage]);
 
-  const totalPages = Math.ceil(allMovies.length / CONFIG.ITEMS_PER_PAGE);
-
   const changePage = useCallback((p: number, pos: 'TOP' | 'BOTTOM', col: number) => {
     setCurrentPage(p);
-    setTimeout(() => {
-      const s = (p - 1) * CONFIG.ITEMS_PER_PAGE;
-      const target = allMovies[s + (pos === 'TOP' ? col : col + CONFIG.COLS)] || allMovies[s];
-      if (target) setFocus(`MOVIE_${target.slug}`);
-    }, 50);
+    const s = (p - 1) * CONFIG.ITEMS_PER_PAGE;
+    const target = allMovies[s + (pos === 'TOP' ? col : col + CONFIG.COLS)] || allMovies[s];
+    if (target) setFocus(`MOVIE_${target.slug}`);
   }, [allMovies]);
 
-  if (!isClient) return <div className="fixed inset-0 bg-[#020202]" />;
-  if (loading) return <div className="fixed inset-0 bg-[#020202] flex items-center justify-center"><div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="h-screen bg-black flex items-center justify-center text-[12px] font-black italic text-red-600 tracking-[0.5em] uppercase">Đang khởi động...</div>;
 
   return (
     <FocusContext.Provider value={focusKey}>
-      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white flex flex-col px-12 pt-12 pb-6 overflow-hidden`}>
-        <div className="grid grid-cols-7 gap-6">
-          {currentItems.slice(0, 7).map((m, i) => (
-            <MovieCard key={m.slug} movie={m} index={i} currentPage={currentPage} totalPages={totalPages} onPageChange={changePage} />
-          ))}
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-            <div className="px-10 py-2 bg-zinc-900/60 border border-white/5 rounded-full backdrop-blur-xl">
-                <span className="text-[11px] font-black italic tracking-[6px] text-red-600 uppercase">Anime Mới | Trang {currentPage} / {totalPages}</span>
-            </div>
-        </div>
-        <div className="grid grid-cols-7 gap-6">
-          {currentItems.slice(7, 14).map((m, i) => (
-            <MovieCard key={m.slug} movie={m} index={i + 7} currentPage={currentPage} totalPages={totalPages} onPageChange={changePage} />
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white flex flex-col px-16 py-10 overflow-hidden`}>
+        
+        <header className="mb-10 flex items-baseline justify-between">
+          <h1 className="text-6xl font-black italic uppercase tracking-tighter border-l-[12px] border-red-600 pl-8 leading-none">
+            Anime
+          </h1>
+          <div className="flex gap-6 items-center opacity-40 text-[11px] font-black uppercase tracking-[0.4em]">
+             <span>Trang {currentPage}</span>
+             <div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div>
+             <span>Turbo Engine v3.1</span>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-7 gap-10 flex-1 content-start">
+          {currentItems.map((m, i) => (
+            <MovieCard key={m.slug} movie={m} index={i} currentPage={currentPage} totalPages={20} onPageChange={changePage} />
           ))}
         </div>
       </main>

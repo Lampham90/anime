@@ -29,7 +29,10 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #dc2626;
 }
-
+.movie-card {
+  contain: layout paint style;
+  will-change: transform;
+}
 /* Lớp này để đảm bảo không có gì đè lên các nút bấm */
 .clickable-area {
   position: relative;
