@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 import { useEffect } from 'react';
 import { init, useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 import { Montserrat } from 'next/font/google';
