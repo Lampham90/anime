@@ -2,6 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
+
 import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUse } from "react";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
@@ -16,6 +17,15 @@ if (typeof window !== "undefined") {
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 const CONFIG = { ORIGIN_IMG: "https://img.ophim.live/uploads/movies/" };
 
+// Helper function để bên trong hoặc ngoài nhưng phải đảm bảo không lỗi SSR
+const formatTime = (s: number) => {
+    if (isNaN(s) || s < 0) return "00:00";
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return `${h > 0 ? h + ':' : ''}${m < 10 ? '0' + m : m}:${sec < 10 ? '0' + sec : sec}`;
+};
+
 const GlobalStyles = () => (
   <style dangerouslySetInnerHTML={{ __html: `
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -28,11 +38,12 @@ const GlobalStyles = () => (
 
 const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any) => {
   const { ref, focused } = useFocusable({ focusKey: fk, onEnterPress: onClick });
+  
   useEffect(() => {
     if (focused && ref.current) {
       ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
     }
-  }, [focused, ref]);
+  }, [focused]);
 
   return (
     <div className="relative w-fit transform-gpu"> 
@@ -59,15 +70,11 @@ const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any
 export default function MovieDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = reactUse(params);
   const router = useRouter();
-  
-  // CHIÊU CUỐI: Kiểm tra xem đã lên Trình duyệt (Client) chưa
   const [isClient, setIsClient] = useState(false);
-  useEffect(() => { setIsClient(true); }, []);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const controlsTimer = useRef<any>(null);
 
   const [movie, setMovie] = useState<any>(null);
   const [servers, setServers] = useState<any[]>([]);
@@ -83,25 +90,36 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
+  useEffect(() => { 
+    setIsClient(true); 
+  }, []);
+
   useEffect(() => {
-    if (!isClient) return; // Chỉ chạy khi là Client
-    fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/phim/${slug}`)
-      .then(r => r.json())
-      .then(json => {
-        const item = json?.data?.item;
-        if (item) {
-          setMovie(item);
-          setServers(item.episodes || []);
-          const saved = localStorage.getItem(`last_ep_${slug}`);
-          if (saved) {
-            const { epIdx, svIdx } = JSON.parse(saved);
-            setCurrentEpIndex(epIdx);
-            setActiveServer(svIdx);
-          }
+    if (!isClient) return;
+    
+    const fetchData = async () => {
+        try {
+            const r = await fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/phim/${slug}`);
+            const json = await r.json();
+            const item = json?.data?.item;
+            if (item) {
+              setMovie(item);
+              setServers(item.episodes || []);
+              const saved = localStorage.getItem(`last_ep_${slug}`);
+              if (saved) {
+                const { epIdx, svIdx } = JSON.parse(saved);
+                setCurrentEpIndex(epIdx);
+                setActiveServer(svIdx);
+              }
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+            setTimeout(() => setFocus("MAIN_PLAY_BTN"), 100);
         }
-        setIsLoading(false);
-        setTimeout(() => setFocus("MAIN_PLAY_BTN"), 100);
-      });
+    };
+    fetchData();
   }, [slug, isClient]);
 
   const exitPlayer = useCallback(() => {
@@ -110,29 +128,23 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
         localStorage.setItem(`progress_${slug}_${currentEpIndex}`, videoRef.current.currentTime.toString());
       }
       videoRef.current.pause();
-      videoRef.current.src = "";
-    }
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-    if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
     }
     setIsPlaying(false);
     setShowQuickMenu(false);
     setShowControls(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setTimeout(() => setFocus("MAIN_PLAY_BTN"), 200);
   }, [slug, currentEpIndex]);
 
   const startPlay = useCallback(() => {
     const link = servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8;
     if (!link || !videoRef.current) return;
+    
     localStorage.setItem(`last_ep_${slug}`, JSON.stringify({ epIdx: currentEpIndex, svIdx: activeServer }));
 
     if (Hls.isSupported()) {
       if (hlsRef.current) hlsRef.current.destroy();
-      const hls = new Hls({ capLevelToPlayerSize: true, lowLatencyMode: true });
+      const hls = new Hls({ capLevelToPlayerSize: true });
       hlsRef.current = hls;
       hls.loadSource(link);
       hls.attachMedia(videoRef.current);
@@ -174,9 +186,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
       if (isPlaying) {
         if (isBack) {
           e.preventDefault();
-          if (document.fullscreenElement) {
-              document.exitFullscreen().catch(() => exitPlayer());
-          } else { exitPlayer(); }
+          exitPlayer();
           return;
         }
         if (showQuickMenu) return;
@@ -208,18 +218,16 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=400&fit=cover&output=webp`;
   }, [movie]);
 
-  // Nếu đang Build (chưa phải Client), trả về giao diện Loading trống để né lỗi useFocusable
   if (!isClient) return <div className="h-screen bg-black" />;
-  if (isLoading) return <div className="h-screen bg-black flex items-center justify-center text-red-600 font-black italic">LOADING...</div>;
+  if (isLoading) return <div className="h-screen bg-black flex items-center justify-center text-red-600 font-black italic animate-pulse">LOADING...</div>;
 
   return (
     <FocusContext.Provider value={focusKey}>
       <GlobalStyles />
-      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden p-12 relative flex justify-center selection:bg-transparent`}>
-        {/* GIỮ NGUYÊN PHẦN RENDER GIAO DIỆN CỦA NÍ BÊN DƯỚI NÀY */}
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden p-12 relative flex justify-center`}>
         {!isPlaying && (
           <div className="fixed inset-0 z-0 opacity-10 blur-[100px] scale-125 transform-gpu pointer-events-none">
-            <img src={finalImgUrl} className="w-full h-full object-cover" />
+            <img src={finalImgUrl} className="w-full h-full object-cover" alt="bg" />
           </div>
         )}
 
@@ -233,7 +241,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
                       <span className="text-white/40">{formatTime(duration)}</span>
                   </div>
                   <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-red-600 transition-all duration-100" style={{ width: `${(displayTime / duration) * 100}%` }} />
+                      <div className="h-full bg-red-600 transition-all duration-100" style={{ width: `${(displayTime / (duration || 1)) * 100}%` }} />
                   </div>
               </div>
             )}
@@ -257,12 +265,12 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
                 <div className="absolute inset-0 bg-red-600/40 ambient-glow rounded-full scale-75 group-focus-within:scale-110" />
                 <div className="relative z-10 rounded-[30px] overflow-hidden border-2 border-white/10 shadow-2xl bg-zinc-900 group-focus-within:scale-105 transition-transform duration-300">
                    {!isImgLoaded && <div className="absolute inset-0 shimmer-box" />}
-                   <img src={finalImgUrl} onLoad={() => setIsImgLoaded(true)} className={`w-full aspect-[2/3] object-cover transition-opacity duration-700 ${isImgLoaded ? 'opacity-100' : 'opacity-0'}`} />
+                   <img src={finalImgUrl} onLoad={() => setIsImgLoaded(true)} className={`w-full aspect-[2/3] object-cover transition-opacity duration-700 ${isImgLoaded ? 'opacity-100' : 'opacity-0'}`} alt="poster" />
                 </div>
               </div>
 
               <div className="flex-1">
-                <div className="mb-6 w-28 opacity-40 hover:opacity-100"><TVButton focusKey="BACK_HOME" name="← TRANG CHỦ" onClick={() => router.push("/")} /></div>
+                <div className="mb-6 w-48 opacity-40 hover:opacity-100"><TVButton focusKey="BACK_HOME" name="← TRANG CHỦ" onClick={() => router.push("/")} /></div>
                 <h1 className="text-5xl font-black mb-6 italic uppercase tracking-tighter text-white drop-shadow-2xl">{movie?.name}</h1>
                 <div className="mb-12">
                   <TVButton 
@@ -304,11 +312,3 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     </FocusContext.Provider>
   );
 }
-
-const formatTime = (s: number) => {
-    if (isNaN(s)) return "00:00";
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = Math.floor(s % 60);
-    return `${h > 0 ? h + ':' : ''}${m < 10 ? '0' + m : m}:${sec < 10 ? '0' + sec : sec}`;
-};
