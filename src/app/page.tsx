@@ -1,26 +1,26 @@
 "use client";
 
 export const dynamic = 'force-dynamic';
-import { useState, useEffect, memo, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import { useRouter } from "next/navigation";
 import { Montserrat } from 'next/font/google';
 import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
 
+// Chỉ khởi tạo trên trình duyệt
 if (typeof window !== "undefined") {
- init({ throttle: 50 }); // Xóa cái đoạn bypassInitHasFocusTimer đi
+  init({ throttle: 50 });
 }
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
 const CONFIG = {
-  // Ưu tiên lấy từ biến môi trường Cloudflare, nếu không có thì lấy mặc định
   WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
   ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
   COLS: 7,
   ITEMS_PER_PAGE: 14 
 };
 
-// --- COMPONENT: MOVIE CARD (ULTIMATE EDITION) ---
+// --- COMPONENT: MOVIE CARD ---
 const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }: any) => {
   const router = useRouter();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -28,7 +28,6 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   const { ref, focused } = useFocusable({
     focusKey: `MOVIE_${movie.slug}`,
     onEnterPress: () => {
-      // Lưu lại slug và trang hiện tại để khi back lại không bị mất vị trí
       sessionStorage.setItem("last_slug", movie.slug);
       sessionStorage.setItem("last_page", currentPage.toString());
       router.push(`/phim/${movie.slug}`);
@@ -88,9 +87,12 @@ export default function HoatHinhHome() {
   const [allMovies, setAllMovies] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false); // Lá chắn Client
+
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
   useEffect(() => {
+    setIsClient(true); // Đánh dấu đã lên Client
     const controller = new AbortController();
     fetch(`${CONFIG.WORKER}/v1/api/danh-sach/hoat-hinh?limit=280`, { signal: controller.signal })
       .then(r => r.json())
@@ -131,6 +133,9 @@ export default function HoatHinhHome() {
     });
   }, [allMovies]);
 
+  // Nếu đang build (Server), trả về loading trống
+  if (!isClient) return <div className="fixed inset-0 bg-[#020202]" />;
+
   if (loading) return <div className="fixed inset-0 bg-[#020202] flex items-center justify-center"><div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -153,8 +158,6 @@ export default function HoatHinhHome() {
             <MovieCard key={m.slug} movie={m} index={i + 7} currentPage={currentPage} totalPages={totalPages} onPageChange={changePage} />
           ))}
         </div>
-
-        //
       </main>
     </FocusContext.Provider>
   );

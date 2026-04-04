@@ -5,7 +5,12 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUs
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
 import { Montserrat } from 'next/font/google';
-import { useFocusable, FocusContext, setFocus } from "@noriginmedia/norigin-spatial-navigation";
+import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
+
+// Khởi tạo điều khiển TV (Chỉ chạy ở Client)
+if (typeof window !== "undefined") {
+  init({ throttle: 50 });
+}
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 const CONFIG = { ORIGIN_IMG: "https://img.ophim.live/uploads/movies/" };
@@ -19,14 +24,14 @@ const GlobalStyles = () => (
     .video-layer { position: fixed; inset: 0; z-index: 9999; background: #000; display: flex; visibility: visible; }
   `}} />
 );
-//
+
 const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any) => {
   const { ref, focused } = useFocusable({ focusKey: fk, onEnterPress: onClick });
   useEffect(() => {
     if (focused && ref.current) {
       ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
     }
-  }, [focused]);
+  }, [focused, ref]);
 
   return (
     <div className="relative w-fit transform-gpu"> 
@@ -54,6 +59,10 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   const { slug } = reactUse(params);
   const router = useRouter();
   
+  // CHIÊU CUỐI: Kiểm tra xem đã lên Trình duyệt (Client) chưa
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => { setIsClient(true); }, []);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -67,7 +76,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isImgLoaded, setIsImgLoaded] = useState(false);
-
   const [duration, setDuration] = useState(0);
   const [displayTime, setDisplayTime] = useState(0);
   const [showControls, setShowControls] = useState(false);
@@ -75,8 +83,8 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
   useEffect(() => {
-    // Tìm dòng fetch trong useEffect
-fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/phim/${slug}`)
+    if (!isClient) return; // Chỉ chạy khi là Client
+    fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/phim/${slug}`)
       .then(r => r.json())
       .then(json => {
         const item = json?.data?.item;
@@ -93,7 +101,7 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
         setIsLoading(false);
         setTimeout(() => setFocus("MAIN_PLAY_BTN"), 100);
       });
-  }, [slug]);
+  }, [slug, isClient]);
 
   const exitPlayer = useCallback(() => {
     if (videoRef.current) {
@@ -102,10 +110,8 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
       }
       videoRef.current.pause();
       videoRef.current.src = "";
-      videoRef.current.load();
     }
     if (hlsRef.current) {
-      hlsRef.current.detachMedia();
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
@@ -118,18 +124,6 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
     setTimeout(() => setFocus("MAIN_PLAY_BTN"), 200);
   }, [slug, currentEpIndex]);
 
-  useEffect(() => {
-    const handleFSChange = () => {
-      if (isPlaying && !document.fullscreenElement) exitPlayer();
-    };
-    document.addEventListener("fullscreenchange", handleFSChange);
-    document.addEventListener("webkitfullscreenchange", handleFSChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFSChange);
-      document.removeEventListener("webkitfullscreenchange", handleFSChange);
-    };
-  }, [isPlaying, exitPlayer]);
-
   const startPlay = useCallback(() => {
     const link = servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8;
     if (!link || !videoRef.current) return;
@@ -137,12 +131,7 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
 
     if (Hls.isSupported()) {
       if (hlsRef.current) hlsRef.current.destroy();
-      const hls = new Hls({
-  capLevelToPlayerSize: true,
-  maxBufferLength: 10, // Giảm xuống 10 giây để nhẹ RAM
-  maxBufferSize: 30 * 1000 * 1000, // Giới hạn 30MB buffer
-  lowLatencyMode: true,
-});
+      const hls = new Hls({ capLevelToPlayerSize: true, lowLatencyMode: true });
       hlsRef.current = hls;
       hls.loadSource(link);
       hls.attachMedia(videoRef.current);
@@ -177,17 +166,8 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
     };
   }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer]);
 
-  const handleSeek = (amount: number) => {
-    if (!videoRef.current) return;
-    const newTime = Math.max(0, Math.min(videoRef.current.currentTime + amount, duration));
-    videoRef.current.currentTime = newTime;
-    setDisplayTime(newTime);
-    setShowControls(true);
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    controlsTimer.current = setTimeout(() => setShowControls(false), 3000);
-  };
-
   useEffect(() => {
+    if (!isClient) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const isBack = e.key === "Backspace" || e.key === "Escape" || e.keyCode === 10009;
       if (isPlaying) {
@@ -199,8 +179,8 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
           return;
         }
         if (showQuickMenu) return;
-        if (e.key === "ArrowRight") { e.preventDefault(); handleSeek(30); }
-        if (e.key === "ArrowLeft") { e.preventDefault(); handleSeek(-30); }
+        if (e.key === "ArrowRight") { e.preventDefault(); if(videoRef.current) videoRef.current.currentTime += 30; }
+        if (e.key === "ArrowLeft") { e.preventDefault(); if(videoRef.current) videoRef.current.currentTime -= 30; }
         if (e.key === "ArrowUp" || e.key === "ArrowDown") {
           e.preventDefault();
           setShowQuickMenu(true);
@@ -218,7 +198,7 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPlaying, showQuickMenu, currentEpIndex, duration, router, exitPlayer]);
+  }, [isPlaying, showQuickMenu, currentEpIndex, router, exitPlayer, isClient]);
 
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
@@ -227,13 +207,15 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
     return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=400&fit=cover&output=webp`;
   }, [movie]);
 
+  // Nếu đang Build (chưa phải Client), trả về giao diện Loading trống để né lỗi useFocusable
+  if (!isClient) return <div className="h-screen bg-black" />;
   if (isLoading) return <div className="h-screen bg-black flex items-center justify-center text-red-600 font-black italic">LOADING...</div>;
 
   return (
     <FocusContext.Provider value={focusKey}>
       <GlobalStyles />
       <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden p-12 relative flex justify-center selection:bg-transparent`}>
-        
+        {/* GIỮ NGUYÊN PHẦN RENDER GIAO DIỆN CỦA NÍ BÊN DƯỚI NÀY */}
         {!isPlaying && (
           <div className="fixed inset-0 z-0 opacity-10 blur-[100px] scale-125 transform-gpu pointer-events-none">
             <img src={finalImgUrl} className="w-full h-full object-cover" />
@@ -291,14 +273,12 @@ fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/
                 </div>
                 <div className="space-y-10">
                   <div>
-                    {/* ĐÃ ĐỔI THÀNH AUDIO */}
                     <h3 className="text-white/20 font-black mb-3 uppercase text-[8px] tracking-[0.4em] italic">Audio</h3>
                     <div className="flex flex-wrap gap-2">
                       {servers.map((s, i) => (
                         <TVButton 
                           key={`sv-${i}`} 
                           focusKey={`SV_BTN_${i}`} 
-                          // ĐÃ BỎ #1 VÀ CHUẨN HÓA TÊN
                           name={s.server_name.toUpperCase().includes('VIET') ? 'VIỆT SUB' : 'THUYẾT MINH'} 
                           isActive={activeServer === i} 
                           onClick={() => { setActiveServer(i); setCurrentEpIndex(0); }} 

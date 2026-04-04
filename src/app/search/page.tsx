@@ -4,20 +4,17 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, memo, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from "next/navigation";
 import { Montserrat } from 'next/font/google';
+import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
 
-let SpatialNav: any;
+// Khởi tạo chỉ ở phía Client
 if (typeof window !== "undefined") {
-  SpatialNav = require("@noriginmedia/norigin-spatial-navigation");
-  SpatialNav.init({ throttle: 80, bypassInitHasFocusTimer: true });
+  init({ throttle: 80, bypassInitHasFocusTimer: true });
 }
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
 const CONFIG = {
-  // Ưu tiên lấy link từ biến môi trường NEXT_PUBLIC_WORKER đã cài trên Cloudflare
-  // Nếu không tìm thấy (ví dụ chạy ở máy cá nhân) thì mới dùng link mặc định
   WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
-  
   ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
   ITEMS_PER_PAGE: 12, 
   KEYBOARD: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "KHOẢNG CÁCH", "XÓA", "LÀM MỚI"]
@@ -25,18 +22,22 @@ const CONFIG = {
 
 export default function SearchHoatHinh() {
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [page, setPage] = useState(1);
   const [searching, setSearching] = useState(false);
   const lastKeyRef = useRef("KEY_A");
 
-  const { ref: pageRef, focusKey } = SpatialNav.useFocusable({
+  // Quan trọng: Báo cho Next.js biết đã lên Client chưa
+  useEffect(() => { setIsClient(true); }, []);
+
+  const { ref: pageRef, focusKey } = useFocusable({
     isFocusBoundary: true, 
   });
 
-  // Xử lý nút Back trên Remote
   useEffect(() => {
+    if (!isClient) return;
     const handleBackBtn = (e: KeyboardEvent) => {
       if (['Escape', 'Backspace'].includes(e.key) || [27, 8, 10009, 461].includes(e.keyCode)) {
         router.push('/');
@@ -44,20 +45,19 @@ export default function SearchHoatHinh() {
     };
     window.addEventListener('keydown', handleBackBtn);
     return () => window.removeEventListener('keydown', handleBackBtn);
-  }, [router]);
+  }, [router, isClient]);
 
   const handleKeypress = useCallback((char: string) => {
     lastKeyRef.current = `KEY_${char}`;
     if (char === "XÓA") setQuery(prev => prev.slice(0, -1));
     else if (char === "LÀM MỚI") { setQuery(""); setResults([]); setPage(1); }
-    else if (char === "CÁCH") setQuery(prev => prev + " ");
+    else if (char === "KHOẢNG CÁCH") setQuery(prev => prev + " ");
     else if (query.length < 25) { setQuery(prev => prev + char); setPage(1); }
-    setTimeout(() => { SpatialNav.setFocus(lastKeyRef.current); }, 5);
+    setTimeout(() => { setFocus(lastKeyRef.current); }, 5);
   }, [query]);
 
-  // Search API
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return; }
+    if (!isClient || query.trim().length < 2) { setResults([]); return; }
     const delayDebounceFn = setTimeout(async () => {
       setSearching(true);
       try {
@@ -66,17 +66,19 @@ export default function SearchHoatHinh() {
       } catch (err) { setResults([]); } finally { setSearching(false); }
     }, 600);
     return () => clearTimeout(delayDebounceFn);
-  }, [query]);
+  }, [query, isClient]);
 
-  const { ref: gridRef } = SpatialNav.useFocusable({
+  const { ref: gridRef } = useFocusable({
     focusKey: 'RESULTS_GRID',
     trackChildren: true,
     isFocusBoundary: true,
   });
 
   useEffect(() => {
-    setTimeout(() => SpatialNav.setFocus("KEY_A"), 500);
-  }, []);
+    if (isClient) {
+        setTimeout(() => setFocus("KEY_A"), 500);
+    }
+  }, [isClient]);
 
   const totalPages = Math.ceil(results.length / CONFIG.ITEMS_PER_PAGE);
   const displayItems = useMemo(() => {
@@ -84,11 +86,13 @@ export default function SearchHoatHinh() {
     return results.slice(start, start + CONFIG.ITEMS_PER_PAGE);
   }, [results, page]);
 
+  // Nếu đang build, trả về màn hình trống để né lỗi
+  if (!isClient) return <div className="h-screen bg-black" />;
+
   return (
-    <SpatialNav.FocusContext.Provider value={focusKey}>
+    <FocusContext.Provider value={focusKey}>
       <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white flex overflow-hidden`}>
         
-        {/* BÀN PHÍM TIẾNG VIỆT */}
         <div className="w-[360px] bg-[#0A0A0A] p-8 flex flex-col border-r border-white/20 z-50 shadow-2xl">
           <HomeButton /> 
 
@@ -113,7 +117,6 @@ export default function SearchHoatHinh() {
           )}
         </div>
 
-        {/* KẾT QUẢ */}
         <div className="flex-1 flex flex-col bg-[#050505] p-12 overflow-hidden">
           <div className="flex justify-between items-end mb-8">
             <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
@@ -141,14 +144,13 @@ export default function SearchHoatHinh() {
           </div>
         </div>
       </main>
-    </SpatialNav.FocusContext.Provider>
+    </FocusContext.Provider>
   );
 }
 
-// --- NÚT TRANG CHỦ ---
 const HomeButton = memo(() => {
   const router = useRouter();
-  const { ref, focused } = SpatialNav.useFocusable({
+  const { ref, focused } = useFocusable({
     focusKey: 'BTN_HOME',
     onEnterPress: () => router.push('/'),
     onArrowPress: (dir) => (dir === 'up' ? false : true)
@@ -160,10 +162,9 @@ const HomeButton = memo(() => {
   );
 });
 
-// --- POSTER PHIM SIÊU SÁNG ---
 const SearchResultItem = memo(({ movie, index, page }: any) => {
   const router = useRouter();
-  const { ref, focused } = SpatialNav.useFocusable({
+  const { ref, focused } = useFocusable({
     focusKey: `POSTER_${page}_${index}`,
     onEnterPress: () => router.push(`/phim/${movie.slug}`),
     onArrowPress: (direction) => (direction === 'up' && index < 6 ? false : true)
@@ -189,9 +190,8 @@ const SearchResultItem = memo(({ movie, index, page }: any) => {
   );
 });
 
-// --- PHÍM BẤM BÀN PHÍM ---
 const KeyItem = memo(({ char, onPress }: any) => {
-  const { ref, focused } = SpatialNav.useFocusable({
+  const { ref, focused } = useFocusable({
     focusKey: `KEY_${char}`,
     onEnterPress: () => onPress(char)
   });
@@ -204,9 +204,8 @@ const KeyItem = memo(({ char, onPress }: any) => {
   );
 });
 
-// --- NÚT PHÂN TRANG ---
 const PageBtn = memo(({ label, active, onClick }: any) => {
-  const { ref, focused } = SpatialNav.useFocusable({
+  const { ref, focused } = useFocusable({
     focusKey: `BTN_${label}`,
     onEnterPress: onClick,
   });
