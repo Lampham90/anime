@@ -13,7 +13,10 @@ if (typeof window !== "undefined") {
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
 const CONFIG = {
-  WORKER: "https://ch.3ks.workers.dev",
+  // Ưu tiên lấy link từ biến môi trường NEXT_PUBLIC_WORKER đã cài trên Cloudflare
+  // Nếu không tìm thấy (ví dụ chạy ở máy cá nhân) thì mới dùng link mặc định
+  WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
+  
   ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
   ITEMS_PER_PAGE: 12, 
   KEYBOARD: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "KHOẢNG CÁCH", "XÓA", "LÀM MỚI"]

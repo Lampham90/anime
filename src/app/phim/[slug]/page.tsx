@@ -74,7 +74,8 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
   useEffect(() => {
-    fetch(`https://ch.3ks.workers.dev/v1/api/phim/${slug}`)
+    // Tìm dòng fetch trong useEffect
+fetch(`${process.env.NEXT_PUBLIC_WORKER || 'https://ch.3ks.workers.dev'}/v1/api/phim/${slug}`)
       .then(r => r.json())
       .then(json => {
         const item = json?.data?.item;
@@ -135,7 +136,12 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
 
     if (Hls.isSupported()) {
       if (hlsRef.current) hlsRef.current.destroy();
-      const hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 20 });
+      const hls = new Hls({
+  capLevelToPlayerSize: true,
+  maxBufferLength: 10, // Giảm xuống 10 giây để nhẹ RAM
+  maxBufferSize: 30 * 1000 * 1000, // Giới hạn 30MB buffer
+  lowLatencyMode: true,
+});
       hlsRef.current = hls;
       hls.loadSource(link);
       hls.attachMedia(videoRef.current);

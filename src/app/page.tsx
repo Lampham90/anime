@@ -12,7 +12,8 @@ if (typeof window !== "undefined") {
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
 const CONFIG = {
-  WORKER: "https://ch.3ks.workers.dev",
+  // Ưu tiên lấy từ biến môi trường Cloudflare, nếu không có thì lấy mặc định
+  WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
   ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
   COLS: 7,
   ITEMS_PER_PAGE: 14 
@@ -152,10 +153,7 @@ export default function HoatHinhHome() {
           ))}
         </div>
 
-        <footer className="mt-auto pt-3 border-t border-white/5 flex justify-between opacity-20 text-[7px] font-black tracking-widest uppercase italic">
-            <span>Engine: React Optimized TV-V3</span>
-            <span className="text-red-600">Pure Performance</span>
-        </footer>
+        
       </main>
     </FocusContext.Provider>
   );
