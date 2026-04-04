@@ -3,8 +3,11 @@ const nextConfig = {
   images: { unoptimized: true },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  // Ép Next.js hiểu môi trường Edge của Cloudflare
-  serverExternalPackages: ["@cloudflare/next-on-pages"],
+  
+  // Thêm dòng này để xử lý trailing slash, tránh lỗi 404 khi truy cập /phim thay vì /phim/
+  trailingSlash: true, 
+
+  // Quan trọng: Đảm bảo không có dòng output: 'export' ở đây!
 };
 
 export default nextConfig;

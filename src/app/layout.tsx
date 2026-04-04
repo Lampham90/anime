@@ -11,7 +11,7 @@ const montserrat = Montserrat({
 });
 
 export const metadata = {
-  title: 'TV Hoạt Hình - Xem Phim Trên TV',
+  title: 'Anime TV',
   description: 'Ứng dụng xem phim hoạt hình tối ưu cho điều khiển TV',
 };
 
