@@ -1,214 +1,215 @@
 "use client";
 
-import { useMemo, useEffect, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import useSWR from 'swr';
-import Header from '@/components/Header';
+import { useState, useEffect, memo, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from "next/navigation";
+import { Montserrat } from 'next/font/google';
 
-const WORKERS = [
-  "https://pro1.pl9.workers.dev",
-  "https://pro2.phuonglam56973.workers.dev",
-  "https://pro3.pplam5697.workers.dev",
-  "https://pro4.phuonglam56971.workers.dev",
-  "https://pro5.phuonglam56972.workers.dev"
-];
+let SpatialNav: any;
+if (typeof window !== "undefined") {
+  SpatialNav = require("@noriginmedia/norigin-spatial-navigation");
+  SpatialNav.init({ throttle: 80, bypassInitHasFocusTimer: true });
+}
 
-const ORIGIN_IMG = "https://img.ophim.live/uploads/movies/";
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
-// --- COMPONENT NHÃN PHIM (ĐỒNG BỘ TRANG CHỦ) ---
-const MovieBadge = ({ movie }: { movie: any }) => {
-  const rawLang = movie.lang?.toLowerCase() || "";
-  const displayLang = rawLang.includes("lồng") ? "LT" : rawLang.includes("thuyết") ? "TM" : "";
-  const episode = movie.episode_current;
-
-  return (
-    <>
-      {/* Nhãn Ngôn ngữ & Năm ở góc trên bên phải */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-        {displayLang && (
-          <div className="bg-red-600/90 backdrop-blur-md px-2 py-0.5 rounded-lg shadow-lg">
-            <span className="text-[9px] font-black text-white">{displayLang}</span>
-          </div>
-        )}
-        <div className="bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/10 shadow-lg">
-          <span className="text-[9px] font-black text-white/90">{movie.year || '2026'}</span>
-        </div>
-      </div>
-
-      {/* Nhãn Tập phim ở góc dưới bên trái (giống style trang chủ) */}
-      {episode && !["full", "1/1", "1"].includes(episode.toLowerCase()) && (
-        <div className="absolute bottom-3 left-3 z-10">
-          <div className="bg-black/40 backdrop-blur-md border border-white/5 px-2 py-0.5 rounded-lg group-hover:bg-red-600 transition-all duration-300">
-            <span className="text-[9px] font-black uppercase italic text-white/90">{episode}</span>
-          </div>
-        </div>
-      )}
-    </>
-  );
+const CONFIG = {
+  WORKER: "https://ch.3ks.workers.dev",
+  ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
+  ITEMS_PER_PAGE: 12, 
+  KEYBOARD: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "KHOẢNG CÁCH", "XÓA", "LÀM MỚI"]
 };
 
-function SearchContent() {
+export default function SearchHoatHinh() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const query = searchParams.get('keyword') || '';
-  const currentPage = parseInt(searchParams.get('page') || '1');
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [page, setPage] = useState(1);
+  const [searching, setSearching] = useState(false);
+  const lastKeyRef = useRef("KEY_A");
 
-  const proxy = useMemo(() => {
-    return WORKERS[Math.floor(Math.random() * WORKERS.length)];
-  }, [query]);
-
-  const searchUrl = query ? `${proxy}/v1/api/tim-kiem?keyword=${query}&page=${currentPage}` : null;
-
-  const { data, isValidating } = useSWR(searchUrl, fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000,
+  const { ref: pageRef, focusKey } = SpatialNav.useFocusable({
+    isFocusBoundary: true, 
   });
 
-  const { movies, totalPages } = useMemo(() => {
-    if (!data?.data?.items) return { movies: [], totalPages: 1 };
-    
-    const rawItems = data.data.items;
-    const filtered = rawItems.filter((m: any) => {
-      const name = ((m.name || "") + (m.origin_name || "")).toLowerCase();
-      const status = (m.status || "").toLowerCase();
-      const current = (m.episode_current || "").toLowerCase();
-      return !name.includes('trailer') && status !== 'trailer' && current !== 'trailer';
-    });
-
-    const pagination = data.data.params?.pagination;
-    const totalItems = pagination?.totalItems || 0;
-    const itemsPerPage = pagination?.totalItemsPerPage || 24; // API thường trả 24
-    
-    return {
-      movies: filtered, 
-      totalPages: Math.ceil(totalItems / itemsPerPage)
+  // Xử lý nút Back trên Remote
+  useEffect(() => {
+    const handleBackBtn = (e: KeyboardEvent) => {
+      if (['Escape', 'Backspace'].includes(e.key) || [27, 8, 10009, 461].includes(e.keyCode)) {
+        router.push('/');
+      }
     };
-  }, [data]);
+    window.addEventListener('keydown', handleBackBtn);
+    return () => window.removeEventListener('keydown', handleBackBtn);
+  }, [router]);
 
-  const getPaginationGroup = useCallback(() => {
-    let start = Math.max(currentPage - 2, 1);
-    let end = Math.min(start + 4, totalPages);
-    if (end - start < 4) start = Math.max(end - 4, 1);
-    const pages = [];
-    for (let i = start; i <= end; i++) { if (i > 0) pages.push(i); }
-    return pages;
-  }, [currentPage, totalPages]);
+  const handleKeypress = useCallback((char: string) => {
+    lastKeyRef.current = `KEY_${char}`;
+    if (char === "XÓA") setQuery(prev => prev.slice(0, -1));
+    else if (char === "LÀM MỚI") { setQuery(""); setResults([]); setPage(1); }
+    else if (char === "CÁCH") setQuery(prev => prev + " ");
+    else if (query.length < 25) { setQuery(prev => prev + char); setPage(1); }
+    setTimeout(() => { SpatialNav.setFocus(lastKeyRef.current); }, 5);
+  }, [query]);
+
+  // Search API
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); return; }
+    const delayDebounceFn = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`${CONFIG.WORKER}/v1/api/tim-kiem?keyword=${query}&limit=120`).then(r => r.json());
+        setResults(res?.data?.items || res?.items || []);
+      } catch (err) { setResults([]); } finally { setSearching(false); }
+    }, 600);
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
+
+  const { ref: gridRef } = SpatialNav.useFocusable({
+    focusKey: 'RESULTS_GRID',
+    trackChildren: true,
+    isFocusBoundary: true,
+  });
+
+  useEffect(() => {
+    setTimeout(() => SpatialNav.setFocus("KEY_A"), 500);
+  }, []);
+
+  const totalPages = Math.ceil(results.length / CONFIG.ITEMS_PER_PAGE);
+  const displayItems = useMemo(() => {
+    const start = (page - 1) * CONFIG.ITEMS_PER_PAGE;
+    return results.slice(start, start + CONFIG.ITEMS_PER_PAGE);
+  }, [results, page]);
 
   return (
-    <main className="min-h-screen w-full bg-[#050505] text-white flex flex-col select-none relative overflow-x-hidden">
-      <Header />
-      
-      {isValidating && (
-        <div className="fixed top-0 left-0 right-0 h-[2px] z-[110] overflow-hidden">
-          <div className="h-full bg-red-600 animate-loading-bar shadow-[0_0_15px_red]"></div>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col px-6 md:px-16 max-w-[1800px] mx-auto w-full pt-32 pb-20 relative z-10">
+    <SpatialNav.FocusContext.Provider value={focusKey}>
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white flex overflow-hidden`}>
         
-        {query && (
-          <div className="mb-16 flex flex-col items-start gap-2">
-            <h1 className="text-[9px] font-black uppercase tracking-[0.5em] text-white/20 italic">
-              SEARCH RESULTS FOR
-            </h1>
-            <div className="flex items-center gap-4">
-               <span className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter text-white">
-                 "{query}"
+        {/* BÀN PHÍM TIẾNG VIỆT */}
+        <div className="w-[360px] bg-[#0A0A0A] p-8 flex flex-col border-r border-white/20 z-50 shadow-2xl">
+          <HomeButton /> 
+
+          <div className="mb-6">
+            <p className="text-[10px] font-black text-red-600 tracking-[4px] uppercase mb-2 italic">TÌM KIẾM</p>
+            <div className="h-14 w-full bg-black rounded-xl border-2 border-white/30 flex items-center px-5 overflow-hidden">
+              <span className="text-xl font-black italic uppercase truncate text-white">
+                {query}<span className="animate-pulse ml-1 text-red-600">|</span>
               </span>
-              <span className="h-[2px] w-12 bg-red-600 shadow-[0_0_10px_red]"></span>
             </div>
           </div>
-        )}
 
-        <div className={`transition-all duration-700 ${isValidating ? 'opacity-40 blur-sm' : 'opacity-100 blur-0'}`}>
-          {movies.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-6 gap-y-12">
-              {movies.map((movie: any) => {
-                const imgUrl = movie.thumb_url.startsWith('http') ? movie.thumb_url : ORIGIN_IMG + movie.thumb_url;
-                
-                return (
-                  <Link 
-                    href={`/phim/${movie.slug}`} 
-                    key={movie.slug} 
-                    className="group relative flex flex-col w-full"
-                  >
-                    {/* POSTER CONTAINER */}
-                    <div className="relative aspect-[2/3] rounded-[2rem] overflow-hidden border border-white/5 bg-neutral-900 shadow-2xl transition-all duration-500 group-hover:border-red-600/50 group-hover:-translate-y-3 group-hover:shadow-[0_20px_50px_rgba(220,38,38,0.15)]">
-                      <img 
-                        src={`https://images.weserv.nl/?url=${encodeURIComponent(imgUrl)}&w=400&fit=cover&output=webp&q=80`} 
-                        alt={movie.name}
-                        loading="lazy"
-                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700"
-                      />
-                      
-                      {/* SỬ DỤNG BADGE ĐỒNG BỘ */}
-                      <MovieBadge movie={movie} />
-                      
-                      {/* Gradient phủ dưới ảnh cho nghệ */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
-                    </div>
+          <div className="grid grid-cols-7 gap-1.5 mb-8">
+            {CONFIG.KEYBOARD.map(k => <KeyItem key={k} char={k} onPress={handleKeypress} />)}
+          </div>
 
-                    {/* Tên phim */}
-                    <div className="mt-5 px-1">
-                      <h3 className="text-[10px] md:text-[11px] font-black uppercase text-white/40 tracking-wider leading-tight group-hover:text-red-500 transition-colors line-clamp-2 text-center italic">
-                        {movie.name}
-                      </h3>
-                    </div>
-                  </Link>
-                );
-              })}
+          {totalPages > 1 && (
+            <div className="mt-auto grid grid-cols-2 gap-3">
+              <PageBtn label="TRƯỚC" active={page > 1} onClick={() => setPage(p => p - 1)} />
+              <PageBtn label="TIẾP THEO" active={page < totalPages} onClick={() => setPage(p => p + 1)} />
             </div>
-          ) : query && !isValidating ? (
-              <div className="flex flex-col items-center justify-center py-40 gap-6">
-                <p className="font-black uppercase italic tracking-[0.5em] text-white/10 text-xs">No movies found</p>
-              </div>
-          ) : null}
+          )}
         </div>
 
-        {/* PHÂN TRANG */}
-        {movies.length > 0 && totalPages > 1 && (
-          <div className="mt-24 flex justify-center">
-            <div className="flex items-center gap-2 p-2 bg-white/[0.02] backdrop-blur-3xl rounded-2xl border border-white/5 shadow-2xl">
-              {getPaginationGroup().map(p => (
-                <button
-                  key={p}
-                  onClick={() => {
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                      router.push(`/search?keyword=${query}&page=${p}`);
-                  }}
-                  className={`w-11 h-11 flex items-center justify-center rounded-xl font-black text-[12px] italic transition-all
-                    ${p === currentPage 
-                        ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)] scale-110' 
-                        : 'text-white/20 hover:text-white hover:bg-white/5'}`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
+        {/* KẾT QUẢ */}
+        <div className="flex-1 flex flex-col bg-[#050505] p-12 overflow-hidden">
+          <div className="flex justify-between items-end mb-8">
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-white">
+              {searching ? "ĐANG TÌM..." : "KẾT QUẢ"}
+            </h2>
+            {totalPages > 0 && (
+              <span className="text-[11px] font-black italic text-white uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
+                TRANG {page} / {totalPages}
+              </span>
+            )}
           </div>
-        )}
-      </div>
 
-      <style jsx global>{`
-        @keyframes loading-bar {
-          0% { width: 0%; left: 0; }
-          50% { width: 70%; left: 0; }
-          100% { width: 100%; left: 100%; }
-        }
-        .animate-loading-bar {
-          animation: loading-bar 1.5s infinite ease-in-out;
-        }
-      `}</style>
-    </main>
+          <div className="flex-1 flex items-center">
+            {results.length > 0 ? (
+              <div ref={gridRef} className="grid grid-cols-6 gap-x-6 gap-y-12 w-full">
+                {displayItems.map((m: any, index: number) => (
+                  <SearchResultItem key={`${m.slug}-${page}-${index}`} movie={m} index={index} page={page} />
+                ))}
+              </div>
+            ) : !searching && (
+              <div className="w-full text-center opacity-20">
+                <p className="text-5xl font-black italic uppercase">NHẬP TÊN PHIM</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </SpatialNav.FocusContext.Provider>
   );
 }
 
-export default function SearchPage() {
+// --- NÚT TRANG CHỦ ---
+const HomeButton = memo(() => {
+  const router = useRouter();
+  const { ref, focused } = SpatialNav.useFocusable({
+    focusKey: 'BTN_HOME',
+    onEnterPress: () => router.push('/'),
+    onArrowPress: (dir) => (dir === 'up' ? false : true)
+  });
   return (
-    <Suspense fallback={<div className="min-h-screen bg-black" />}>
-      <SearchContent />
-    </Suspense>
+    <div ref={ref} className={`mb-6 h-10 w-40 rounded-lg flex items-center justify-center transition-all border-2 ${focused ? "bg-red-600 border-white scale-110 shadow-[0_0_25px_rgba(220,38,38,0.6)]" : "bg-zinc-900 border-white/10 opacity-60"}`}>
+      <span className="text-[10px] font-black text-white uppercase tracking-tighter">← TRANG CHỦ</span>
+    </div>
   );
-}
+});
+
+// --- POSTER PHIM SIÊU SÁNG ---
+const SearchResultItem = memo(({ movie, index, page }: any) => {
+  const router = useRouter();
+  const { ref, focused } = SpatialNav.useFocusable({
+    focusKey: `POSTER_${page}_${index}`,
+    onEnterPress: () => router.push(`/phim/${movie.slug}`),
+    onArrowPress: (direction) => (direction === 'up' && index < 6 ? false : true)
+  });
+
+  const imgUrl = useMemo(() => {
+    const raw = movie.thumb_url || movie.poster_url || "";
+    const base = raw.startsWith('http') ? raw : `${CONFIG.ORIGIN_IMG}${raw}`;
+    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=300&fit=cover&output=webp`;
+  }, [movie]);
+
+  return (
+    <div ref={ref} className={`flex flex-col transition-all duration-300 ${focused ? "scale-110 z-50 opacity-100" : "opacity-75 scale-95"}`}>
+      <div className={`aspect-[2/3] w-full rounded-xl overflow-hidden transition-all duration-500 ${
+        focused ? "ring-[8px] ring-white drop-shadow-[0_0_50px_rgba(255,255,255,0.7)] brightness-125 contrast-110" : "border-2 border-white/10"
+      }`}>
+        <img src={imgUrl} className="w-full h-full object-cover" />
+      </div>
+      <p className={`mt-3 text-[10px] font-black uppercase italic truncate px-1 ${focused ? "text-white" : "text-zinc-200"}`}>
+        {movie.name}
+      </p>
+    </div>
+  );
+});
+
+// --- PHÍM BẤM BÀN PHÍM ---
+const KeyItem = memo(({ char, onPress }: any) => {
+  const { ref, focused } = SpatialNav.useFocusable({
+    focusKey: `KEY_${char}`,
+    onEnterPress: () => onPress(char)
+  });
+  return (
+    <div ref={ref} className={`flex items-center justify-center rounded-lg font-black transition-all ${
+      focused ? "bg-white text-black scale-110 shadow-xl z-50" : "bg-zinc-800 text-zinc-300 border border-white/20"
+    }`} style={{ height: '42px' }}>
+      <span className={char.length > 1 ? "text-[7px]" : "text-sm"}>{char}</span>
+    </div>
+  );
+});
+
+// --- NÚT PHÂN TRANG ---
+const PageBtn = memo(({ label, active, onClick }: any) => {
+  const { ref, focused } = SpatialNav.useFocusable({
+    focusKey: `BTN_${label}`,
+    onEnterPress: onClick,
+  });
+  if (!active) return <div className="h-12 rounded-lg bg-zinc-900/40 flex items-center justify-center text-[7px] font-black text-zinc-700 italic border border-white/10 uppercase opacity-30">{label}</div>;
+  return (
+    <div ref={ref} className={`h-12 rounded-lg flex items-center justify-center text-[9px] font-black italic transition-all border-2 ${
+      focused ? "bg-red-600 text-white scale-105 border-red-500 shadow-lg" : "bg-zinc-900 text-zinc-100 border-white/20"
+    }`}>{label}</div>
+  );
+});

@@ -1,371 +1,326 @@
 "use client";
-/** * 🔒 BẢN SIÊU CẤP HOÀN THIỆN - FULL HOTKEYS & ANDROID TV SUPPORT
- * ✅ TV: Hỗ trợ phím Enter/OK, Back/Escape, Arrow Left/Right.
- * ✅ Fix: Giữ nguyên danh sách Season khi chuyển giữa các phần phim.
- * ✅ Fix: Chống crash khi đổi Server (Audio) lệch số lượng tập.
- * ✅ UI: Overlay thông minh đóng Dropdown trên mọi thiết bị.
- */
-export const runtime = 'edge';
-import { useState, useEffect, useRef, useCallback, use as reactUse } from "react";
-import Link from "next/link";
+
+import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUse } from "react";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
 import { Montserrat } from 'next/font/google';
+import { useFocusable, FocusContext, setFocus } from "@noriginmedia/norigin-spatial-navigation";
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
+const CONFIG = { ORIGIN_IMG: "https://img.ophim.live/uploads/movies/" };
 
-const WORKERS = [
-  "https://pro1.pl9.workers.dev",
-  "https://pro2.phuonglam56973.workers.dev",
-  "https://pro3.pplam5697.workers.dev",
-  "https://pro4.phuonglam56971.workers.dev",
-  "https://pro5.phuonglam56972.workers.dev"
-];
+const GlobalStyles = () => (
+  <style dangerouslySetInnerHTML={{ __html: `
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    .shimmer-box { background: linear-gradient(90deg, #0a0a0a 25%, #1a1a1a 50%, #0a0a0a 75%); background-size: 200% 100%; animation: shimmer 2s infinite linear; }
+    .ambient-glow { filter: blur(60px); transition: transform 0.6s ease, opacity 0.6s ease; opacity: 0.25; pointer-events: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .video-layer { position: fixed; inset: 0; z-index: 9999; background: #000; display: flex; visibility: visible; }
+  `}} />
+);
 
-const getRandomWorker = () => WORKERS[Math.floor(Math.random() * WORKERS.length)];
-const ORIGIN_IMG = "https://img.ophim.live/uploads/movies/";
+const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any) => {
+  const { ref, focused } = useFocusable({ focusKey: fk, onEnterPress: onClick });
+  useEffect(() => {
+    if (focused && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+    }
+  }, [focused]);
 
-const getImageUrl = (movie: any) => {
-  if (!movie) return "";
-  const path = movie.poster_url || movie.thumb_url;
-  const imgFullUrl = path?.startsWith('http') ? path : `${ORIGIN_IMG}${path}`;
-  return `https://images.weserv.nl/?url=${encodeURIComponent(imgFullUrl)}&w=1920&fit=cover&output=webp&q=90`;
-};
-
-const cleanServerName = (name: string) => name.replace(/#\d+/g, '').trim();
+  return (
+    <div className="relative w-fit transform-gpu"> 
+      {focused && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-[99]">
+          <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[7px] border-t-red-600 animate-bounce" />
+        </div>
+      )}
+      <button
+        ref={ref}
+        onClick={onClick}
+        className={`px-5 py-2 rounded-xl font-black transition-all duration-150 outline-none border-2 text-[10px] uppercase flex items-center justify-center ${
+          isActive ? "bg-red-600 text-white border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.5)]" : 
+          focused ? "bg-white text-black scale-105 shadow-[0_0_40px_rgba(255,255,255,0.8)] z-50 border-white" : 
+          isPrimary ? "bg-zinc-100 text-black border-white shadow-lg" : "bg-zinc-900/40 text-zinc-400 border-white/5"
+        }`}
+      >
+        {name}
+      </button>
+    </div>
+  );
+});
 
 export default function MovieDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = reactUse(params);
   const router = useRouter();
+  
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const controlsTimer = useRef<any>(null);
 
   const [movie, setMovie] = useState<any>(null);
   const [servers, setServers] = useState<any[]>([]);
   const [activeServer, setActiveServer] = useState(0);
-  const [currentLink, setCurrentLink] = useState<string | null>(null);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [lastWatchedEp, setLastWatchedEp] = useState<number | null>(null);
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isImgLoaded, setIsImgLoaded] = useState(false);
+
+  const [duration, setDuration] = useState(0);
+  const [displayTime, setDisplayTime] = useState(0);
+  const [showControls, setShowControls] = useState(false);
   
-  // Logic Duy trì Season
-  const [relatedSeasons, setRelatedSeasons] = useState<any[]>([]);
-  const [seasonsLoaded, setSeasonsLoaded] = useState(false);
-  
-  const [openSeason, setOpenSeason] = useState(false);
-  const [openAudio, setOpenAudio] = useState(false);
-
-  // --- LOGIC YÊU THÍCH (THÊM MỚI) ---
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
   useEffect(() => {
-    const favs = JSON.parse(localStorage.getItem("movie_favorites") || "[]");
-    setIsFavorite(favs.some((item: any) => item.slug === slug));
-  }, [slug]);
-
-  const toggleFavorite = () => {
-    const favs = JSON.parse(localStorage.getItem("movie_favorites") || "[]");
-    if (isFavorite) {
-      const newFavs = favs.filter((item: any) => item.slug !== slug);
-      localStorage.setItem("movie_favorites", JSON.stringify(newFavs));
-      setIsFavorite(false);
-    } else {
-      const newData = { 
-        slug, 
-        name: movie.name, 
-        thumb_url: movie.thumb_url, 
-        poster_url: movie.poster_url,
-        year: movie.year 
-      };
-      favs.push(newData);
-      localStorage.setItem("movie_favorites", JSON.stringify(favs));
-      setIsFavorite(true);
-    }
-  };
-
-  // --- HỆ THỐNG ĐIỀU KHIỂN ĐA NỀN TẢNG (PC & ANDROID TV) ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!videoRef.current) return;
-      const video = videoRef.current;
-      const code = e.code;
-
-      if (code === "Space" || code === "Enter" || code === "NumpadEnter") {
-        if (isPlaying) {
-          e.preventDefault();
-          if (video.paused) video.play().catch(() => {});
-          else video.pause();
-        }
-      }
-
-      if (code === "ArrowRight") {
-        if (isPlaying) {
-          e.preventDefault();
-          video.currentTime += 10;
-        }
-      } else if (code === "ArrowLeft") {
-        if (isPlaying) {
-          e.preventDefault();
-          video.currentTime -= 10;
-        }
-      }
-
-      if (code === "Escape" || code === "BrowserBack") {
-        if (isPlaying) {
-          e.preventDefault();
-          setIsPlaying(false);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [isPlaying]);
-
-  const saveProgress = useCallback((epIndex: number, seconds: number = 0) => {
-    if (!slug) return;
-    const history = JSON.parse(localStorage.getItem("movie_history") || "{}");
-    history[slug] = { epIndex, seconds };
-    localStorage.setItem("movie_history", JSON.stringify(history));
-    setLastWatchedEp(epIndex);
-  }, [slug]);
-
-  const handleNextEpisode = useCallback(() => {
-    const nextIdx = currentEpIndex + 1;
-    const currentServerData = servers[activeServer]?.server_data;
-    if (currentServerData && nextIdx < currentServerData.length) {
-      setCurrentLink(currentServerData[nextIdx].link_m3u8);
-      setCurrentEpIndex(nextIdx);
-      saveProgress(nextIdx, 0);
-    }
-  }, [currentEpIndex, servers, activeServer, saveProgress]);
-
-  const handleServerChange = (idx: number) => {
-    setActiveServer(idx);
-    setOpenAudio(false);
-    const newData = servers[idx]?.server_data;
-    if (newData) {
-      const safeIdx = currentEpIndex < newData.length ? currentEpIndex : 0;
-      setCurrentEpIndex(safeIdx);
-      setCurrentLink(newData[safeIdx].link_m3u8);
-    }
-  };
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !isPlaying) return;
-    const handleTimeUpdate = () => {
-      if (Math.floor(video.currentTime) % 5 === 0) saveProgress(currentEpIndex, video.currentTime);
-    };
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    video.addEventListener('ended', handleNextEpisode);
-    return () => {
-      video.removeEventListener('timeupdate', handleTimeUpdate);
-      video.removeEventListener('ended', handleNextEpisode);
-    };
-  }, [isPlaying, currentEpIndex, handleNextEpisode, saveProgress]);
-
-  useEffect(() => {
-    if (isPlaying && currentLink && videoRef.current) {
-      const video = videoRef.current;
-      const history = JSON.parse(localStorage.getItem("movie_history") || "{}");
-      const savedSeconds = history[slug]?.seconds || 0;
-      if (hlsRef.current) hlsRef.current.destroy();
-      const initPlayer = (v: HTMLVideoElement) => {
-        v.currentTime = savedSeconds;
-        v.play().catch(() => {});
-      };
-      if (Hls.isSupported()) {
-        const hls = new Hls();
-        hlsRef.current = hls;
-        hls.loadSource(currentLink);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => initPlayer(video));
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = currentLink;
-        initPlayer(video);
-      }
-    }
-  }, [isPlaying, currentLink, slug]);
-
-  useEffect(() => {
-    setMounted(true);
-    window.scrollTo(0, 0);
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const worker = getRandomWorker();
-        const res = await fetch(`${worker}/v1/api/phim/${slug}`);
-        const json = await res.json();
+    fetch(`https://ch.3ks.workers.dev/v1/api/phim/${slug}`)
+      .then(r => r.json())
+      .then(json => {
         const item = json?.data?.item;
-
         if (item) {
           setMovie(item);
-          if (!seasonsLoaded) {
-            const getBaseSlug = (s: string) => s.split(/-(phan|season|ss|part|tap|p|s|live-action)-\d+|-\d+$/i)[0];
-            const baseSlug = getBaseSlug(slug);
-            const baseName = item.name.split(/phần|season|ss|part|tập/i)[0].trim();
-            const sRes = await fetch(`${worker}/v1/api/tim-kiem?keyword=${encodeURIComponent(baseName)}&limit=20`);
-            const sJson = await sRes.json();
-            if (sJson?.data?.items) {
-              const list = sJson.data.items
-                .filter((i: any) => getBaseSlug(i.slug) === baseSlug)
-                .map((i: any) => ({ name: i.name, slug: i.slug }))
-                .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, {numeric: true}));
-              setRelatedSeasons(list);
-              setSeasonsLoaded(true);
-            }
+          setServers(item.episodes || []);
+          const saved = localStorage.getItem(`last_ep_${slug}`);
+          if (saved) {
+            const { epIdx, svIdx } = JSON.parse(saved);
+            setCurrentEpIndex(epIdx);
+            setActiveServer(svIdx);
           }
-          const rawServers = item.episodes || [];
-          const sortedServers = [...rawServers].sort((a, b) => {
-            const priority = (name: string) => {
-              const n = name.toLowerCase();
-              if (n.includes("lồng tiếng")) return 1;
-              if (n.includes("thuyết minh")) return 2;
-              return 3;
-            };
-            return priority(a.server_name) - priority(b.server_name);
-          });
-          setServers(sortedServers);
-          const history = JSON.parse(localStorage.getItem("movie_history") || "{}");
-          const saved = history[slug];
-          const startEp = saved ? saved.epIndex : 0;
-          setCurrentEpIndex(startEp);
-          setCurrentLink(sortedServers[0]?.server_data?.[startEp]?.link_m3u8);
-          setLastWatchedEp(saved ? saved.epIndex : null);
         }
-      } catch (e) { console.error(e); }
-      setIsLoading(false);
-    };
-    fetchData();
-  }, [slug, seasonsLoaded]);
+        setIsLoading(false);
+        setTimeout(() => setFocus("MAIN_PLAY_BTN"), 100);
+      });
+  }, [slug]);
 
-  if (!mounted) return null;
-  if (isLoading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  const exitPlayer = useCallback(() => {
+    if (videoRef.current) {
+      if (videoRef.current.currentTime > 5) {
+        localStorage.setItem(`progress_${slug}_${currentEpIndex}`, videoRef.current.currentTime.toString());
+      }
+      videoRef.current.pause();
+      videoRef.current.src = "";
+      videoRef.current.load();
+    }
+    if (hlsRef.current) {
+      hlsRef.current.detachMedia();
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+    }
+    setIsPlaying(false);
+    setShowQuickMenu(false);
+    setShowControls(false);
+    setTimeout(() => setFocus("MAIN_PLAY_BTN"), 200);
+  }, [slug, currentEpIndex]);
+
+  useEffect(() => {
+    const handleFSChange = () => {
+      if (isPlaying && !document.fullscreenElement) exitPlayer();
+    };
+    document.addEventListener("fullscreenchange", handleFSChange);
+    document.addEventListener("webkitfullscreenchange", handleFSChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFSChange);
+      document.removeEventListener("webkitfullscreenchange", handleFSChange);
+    };
+  }, [isPlaying, exitPlayer]);
+
+  const startPlay = useCallback(() => {
+    const link = servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8;
+    if (!link || !videoRef.current) return;
+    localStorage.setItem(`last_ep_${slug}`, JSON.stringify({ epIdx: currentEpIndex, svIdx: activeServer }));
+
+    if (Hls.isSupported()) {
+      if (hlsRef.current) hlsRef.current.destroy();
+      const hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 20 });
+      hlsRef.current = hls;
+      hls.loadSource(link);
+      hls.attachMedia(videoRef.current);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const saved = localStorage.getItem(`progress_${slug}_${currentEpIndex}`);
+        if (saved && videoRef.current) videoRef.current.currentTime = parseFloat(saved);
+        videoRef.current?.play().catch(() => {});
+        playerContainerRef.current?.requestFullscreen().catch(() => {});
+      });
+    }
+  }, [servers, activeServer, currentEpIndex, slug]);
+
+  useEffect(() => { if (isPlaying) startPlay(); }, [isPlaying, currentEpIndex, activeServer, startPlay]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onTimeUpdate = () => setDisplayTime(v.currentTime);
+    const onLoadedMetadata = () => setDuration(v.duration);
+    const onEnded = () => {
+      if (currentEpIndex < servers[activeServer]?.server_data?.length - 1) {
+        setCurrentEpIndex(prev => prev + 1);
+      } else { exitPlayer(); }
+    };
+    v.addEventListener('timeupdate', onTimeUpdate);
+    v.addEventListener('loadedmetadata', onLoadedMetadata);
+    v.addEventListener('ended', onEnded);
+    return () => {
+      v.removeEventListener('timeupdate', onTimeUpdate);
+      v.removeEventListener('loadedmetadata', onLoadedMetadata);
+      v.removeEventListener('ended', onEnded);
+    };
+  }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer]);
+
+  const handleSeek = (amount: number) => {
+    if (!videoRef.current) return;
+    const newTime = Math.max(0, Math.min(videoRef.current.currentTime + amount, duration));
+    videoRef.current.currentTime = newTime;
+    setDisplayTime(newTime);
+    setShowControls(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => setShowControls(false), 3000);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isBack = e.key === "Backspace" || e.key === "Escape" || e.keyCode === 10009;
+      if (isPlaying) {
+        if (isBack) {
+          e.preventDefault();
+          if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => exitPlayer());
+          } else { exitPlayer(); }
+          return;
+        }
+        if (showQuickMenu) return;
+        if (e.key === "ArrowRight") { e.preventDefault(); handleSeek(30); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); handleSeek(-30); }
+        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          setShowQuickMenu(true);
+          setTimeout(() => setFocus(`QUICK_EP_${currentEpIndex}`), 50);
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          videoRef.current?.paused ? videoRef.current.play() : videoRef.current?.pause();
+          setShowControls(true);
+        }
+      } else if (isBack) {
+        e.preventDefault();
+        router.push("/");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPlaying, showQuickMenu, currentEpIndex, duration, router, exitPlayer]);
+
+  const finalImgUrl = useMemo(() => {
+    if (!movie) return "";
+    const raw = movie.thumb_url || movie.poster_url || ""; 
+    const base = raw.startsWith('http') ? raw : `${CONFIG.ORIGIN_IMG}${raw}`;
+    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=400&fit=cover&output=webp`;
+  }, [movie]);
+
+  if (isLoading) return <div className="h-screen bg-black flex items-center justify-center text-red-600 font-black italic">LOADING...</div>;
 
   return (
-    <main className={`${montserrat.className} min-h-screen bg-[#050505] text-white overflow-x-hidden pb-10`}>
-      <style jsx global>{`
-        html, body { overflow-x: hidden; scrollbar-width: none; }
-        body::-webkit-scrollbar { display: none; }
-        .glass-btn { background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); transition: all 0.3s ease; }
-        .glass-btn:hover { background: rgba(229, 9, 20, 0.7); transform: translateY(-2px); }
-        .custom-dropdown { position: relative; min-width: 170px; user-select: none; z-index: 50; }
-        .dropdown-selected { border: 1.5px solid rgba(229, 9, 20, 0.4); background: rgba(255,255,255,0.04); border-radius: 9999px; padding: 10px 40px 10px 22px; font-size: 10.5px; font-weight: 900; text-transform: uppercase; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: space-between; }
-        .dropdown-selected:focus { border-color: #ff0000; box-shadow: 0 0 15px rgba(229, 9, 20, 0.5); outline: none; }
-        .dropdown-menu { position: absolute; top: calc(100% + 8px); left: 0; width: 100%; background: #0f0f0f; border: 1px solid rgba(229, 9, 20, 0.4); border-radius: 16px; overflow: hidden; z-index: 100; box-shadow: 0 12px 40px rgba(0,0,0,0.9); }
-        .dropdown-item { padding: 13px 22px; font-size: 9.5px; font-weight: 900; text-transform: uppercase; color: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.2s; }
-        .dropdown-item:hover, .dropdown-item:focus { background: rgba(229, 9, 20, 0.12); color: #ff0000; outline: none; }
-        .dropdown-item.active { background: #e50914; color: white; }
-        video { outline: none; }
-      `}</style>
-
-      {/* --- BANNER --- */}
-      <section className="relative w-full h-[85vh] md:h-[95vh] bg-black">
-        {!isPlaying ? (
-          <div className="relative w-full h-full">
-            <img src={getImageUrl(movie)} className="w-full h-full object-cover opacity-60" alt={movie?.name} />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent" />
-            <div className="absolute inset-0 flex flex-col justify-end pb-24 px-6 md:px-24">
-              <div className="flex items-center gap-3 mb-3"><div className="w-8 h-[2px] bg-red-600"></div><span className="text-[7.5px] font-black uppercase tracking-[0.4em] text-white">Hot Premiere</span></div>
-              <h1 className="text-[44px] md:text-[81px] font-black uppercase italic mb-5 leading-[0.9] max-w-5xl tracking-tighter drop-shadow-2xl">{movie?.name}</h1>
-              <div className="text-[12px] md:text-[16px] font-medium italic text-white/80 mb-10 leading-relaxed max-w-2xl line-clamp-3" dangerouslySetInnerHTML={{ __html: movie?.content }} />
-              
-              {/* CỤM NÚT ĐIỀU KHIỂN (THÊM NÚT TRÁI TIM) */}
-              <div className="flex items-center gap-4">
-                <button onClick={() => setIsPlaying(true)} className="glass-btn w-fit text-white px-9 py-3.5 rounded-full font-black text-[10px] md:text-[12px] uppercase tracking-[0.2em]">
-                  {lastWatchedEp !== null ? `Tiếp tục tập ${lastWatchedEp + 1}` : "Xem ngay"}
-                </button>
-
-                <button 
-                  onClick={toggleFavorite}
-                  className={`w-12 h-12 md:w-14 md:h-14 rounded-full border-2 flex items-center justify-center transition-all duration-300 group ${
-                    isFavorite 
-                    ? "bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(229,9,20,0.5)]" 
-                    : "bg-black/20 border-white/20 text-white hover:border-red-600 hover:text-red-600"
-                  }`}
-                >
-                  <svg className={`w-5 h-5 md:w-6 md:h-6 transition-transform group-hover:scale-125 ${isFavorite ? 'fill-current' : 'fill-none'}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </button>
-              </div>
-
-            </div>
-          </div>
-        ) : (
-          <div className="relative w-full h-full bg-black">
-            <video ref={videoRef} controls autoPlay className="w-full h-full object-contain" />
+    <FocusContext.Provider value={focusKey}>
+      <GlobalStyles />
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden p-12 relative flex justify-center selection:bg-transparent`}>
+        
+        {!isPlaying && (
+          <div className="fixed inset-0 z-0 opacity-10 blur-[100px] scale-125 transform-gpu pointer-events-none">
+            <img src={finalImgUrl} className="w-full h-full object-cover" />
           </div>
         )}
-        <Link href="/" className="absolute top-6 left-6 z-[110] bg-black/40 backdrop-blur-xl p-2.5 rounded-full border border-white/10 hover:border-red-600 transition-all">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-        </Link>
-      </section>
 
-      <div className="max-w-[1400px] mx-auto px-6 md:px-24 py-12 space-y-12">
-        {/* --- SETTINGS --- */}
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-red-600 mb-6 italic">Playback Settings</h2>
-          <div className="flex flex-wrap items-center gap-10 border-b border-white/5 pb-10">
-            {relatedSeasons.length > 1 && (
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] font-black uppercase text-red-600 tracking-widest italic">Phần:</span>
-                <div className="custom-dropdown">
-                  <div className="dropdown-selected" onClick={() => {setOpenSeason(!openSeason); setOpenAudio(false)}}>
-                    {relatedSeasons.find(s => s.slug === slug)?.name || "Chọn phần"}
-                    <svg className={`w-2.5 h-2.5 transition-transform ${openSeason ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7"/></svg>
+        {isPlaying && (
+          <div ref={playerContainerRef} className="video-layer">
+            <video ref={videoRef} className="w-full h-full object-contain" />
+            {showControls && !showQuickMenu && (
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[70%] bg-zinc-900/90 p-6 rounded-[30px] border border-white/5 shadow-2xl backdrop-blur-md">
+                  <div className="flex justify-between mb-3 font-black text-xl text-red-600">
+                      <span>{formatTime(displayTime)}</span>
+                      <span className="text-white/40">{formatTime(duration)}</span>
                   </div>
-                  {openSeason && (
-                    <>
-                      <div className="fixed inset-0 z-[90]" onClick={() => setOpenSeason(false)} />
-                      <div className="dropdown-menu">
-                        {relatedSeasons.map((s, i) => (
-                          <div key={i} className={`dropdown-item ${s.slug === slug ? 'active' : ''}`} onClick={() => router.push(`/phim/${s.slug}`)}>{s.name}</div>
-                        ))}
-                      </div>
-                    </>
-                  )}
+                  <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-600 transition-all duration-100" style={{ width: `${(displayTime / duration) * 100}%` }} />
+                  </div>
+              </div>
+            )}
+            {showQuickMenu && (
+              <div className="absolute inset-0 bg-black/95 flex flex-col justify-center px-24 z-[100] animate-in fade-in duration-300">
+                <h2 className="text-white font-black text-4xl mb-10 italic uppercase border-l-4 border-red-600 pl-6">Chọn tập nhanh</h2>
+                <div className="flex flex-wrap gap-3 max-h-[50vh] overflow-y-auto no-scrollbar py-4">
+                  {servers[activeServer]?.server_data?.map((ep: any, i: number) => (
+                    <TVButton key={`q-${i}`} focusKey={`QUICK_EP_${i}`} name={ep.name} isActive={currentEpIndex === i} onClick={() => { setCurrentEpIndex(i); setShowQuickMenu(false); }} />
+                  ))}
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-4">
-              <span className="text-[10px] font-black uppercase text-red-600 tracking-widest italic">Audio:</span>
-              <div className="custom-dropdown">
-                <div className="dropdown-selected" onClick={() => {setOpenAudio(!openAudio); setOpenSeason(false)}}>
-                  {cleanServerName(servers[activeServer]?.server_name || "")}
-                  <svg className={`w-2.5 h-2.5 transition-transform ${openAudio ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7"/></svg>
+          </div>
+        )}
+
+        {!isPlaying && (
+          <div className="relative z-10 w-[85vw] max-w-7xl pt-6">
+            <div className="flex gap-16 items-start w-full">
+              <div className="w-[300px] flex-shrink-0 relative group">
+                <div className="absolute inset-0 bg-red-600/40 ambient-glow rounded-full scale-75 group-focus-within:scale-110" />
+                <div className="relative z-10 rounded-[30px] overflow-hidden border-2 border-white/10 shadow-2xl bg-zinc-900 group-focus-within:scale-105 transition-transform duration-300">
+                   {!isImgLoaded && <div className="absolute inset-0 shimmer-box" />}
+                   <img src={finalImgUrl} onLoad={() => setIsImgLoaded(true)} className={`w-full aspect-[2/3] object-cover transition-opacity duration-700 ${isImgLoaded ? 'opacity-100' : 'opacity-0'}`} />
                 </div>
-                {openAudio && (
-                  <>
-                    <div className="fixed inset-0 z-[90]" onClick={() => setOpenAudio(false)} />
-                    <div className="dropdown-menu">
+              </div>
+
+              <div className="flex-1">
+                <div className="mb-6 w-28 opacity-40 hover:opacity-100"><TVButton focusKey="BACK_HOME" name="← TRANG CHỦ" onClick={() => router.push("/")} /></div>
+                <h1 className="text-5xl font-black mb-6 italic uppercase tracking-tighter text-white drop-shadow-2xl">{movie?.name}</h1>
+                <div className="mb-12">
+                  <TVButton 
+                    focusKey="MAIN_PLAY_BTN" 
+                    name={currentEpIndex > 0 ? `TIẾP TỤC TẬP ${servers[activeServer]?.server_data[currentEpIndex]?.name}` : "XEM PHIM NGAY"} 
+                    isPrimary 
+                    onClick={() => setIsPlaying(true)} 
+                  />
+                </div>
+                <div className="space-y-10">
+                  <div>
+                    {/* ĐÃ ĐỔI THÀNH AUDIO */}
+                    <h3 className="text-white/20 font-black mb-3 uppercase text-[8px] tracking-[0.4em] italic">Audio</h3>
+                    <div className="flex flex-wrap gap-2">
                       {servers.map((s, i) => (
-                        <div key={i} className={`dropdown-item ${activeServer === i ? 'active' : ''}`} onClick={() => handleServerChange(i)}>{cleanServerName(s.server_name)}</div>
+                        <TVButton 
+                          key={`sv-${i}`} 
+                          focusKey={`SV_BTN_${i}`} 
+                          // ĐÃ BỎ #1 VÀ CHUẨN HÓA TÊN
+                          name={s.server_name.toUpperCase().includes('VIET') ? 'VIỆT SUB' : 'THUYẾT MINH'} 
+                          isActive={activeServer === i} 
+                          onClick={() => { setActiveServer(i); setCurrentEpIndex(0); }} 
+                        />
                       ))}
                     </div>
-                  </>
-                )}
+                  </div>
+                  <div>
+                    <h3 className="text-red-600/40 font-black mb-3 uppercase text-[8px] tracking-[0.4em] italic">Danh sách tập</h3>
+                    <div className="flex flex-wrap gap-2 bg-white/[0.02] p-5 rounded-3xl border border-white/5 max-h-[35vh] overflow-y-auto no-scrollbar shadow-inner transform-gpu">
+                      {servers[activeServer]?.server_data?.map((ep: any, i: number) => (
+                        <TVButton key={`ep-${i}`} focusKey={`PAGE_EP_BTN_${i}`} name={ep.name} isActive={currentEpIndex === i} onClick={() => { setCurrentEpIndex(i); setIsPlaying(true); }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* --- EPISODES --- */}
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-red-600 mb-6 italic">Episode List</h2>
-          <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-18 gap-3">
-            {servers[activeServer]?.server_data?.map((ep: any, i: number) => (
-              <button key={i} onClick={() => { setCurrentLink(ep.link_m3u8); setCurrentEpIndex(i); setIsPlaying(true); saveProgress(i, 0); window.scrollTo({top:0, behavior:'smooth'}); }} 
-                className={`w-11 h-11 md:w-12 md:h-12 flex items-center justify-center rounded-full text-[10px] font-black border-2 transition-all duration-300 ${currentEpIndex === i ? "border-red-600 text-white bg-red-600 shadow-[0_0_20px_rgba(229,9,20,0.5)]" : "bg-white/5 border-white/5 text-white/40 hover:border-red-600/60 focus:border-red-600"}`}>
-                {ep.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </main>
+        )}
+      </main>
+    </FocusContext.Provider>
   );
 }
+
+const formatTime = (s: number) => {
+    if (isNaN(s)) return "00:00";
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return `${h > 0 ? h + ':' : ''}${m < 10 ? '0' + m : m}:${sec < 10 ? '0' + sec : sec}`;
+};

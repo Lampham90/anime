@@ -10,6 +10,7 @@
     "pages:build": "npx @cloudflare/next-on-pages"
   },
   "dependencies": {
+    "@noriginmedia/norigin-spatial-navigation": "^3.0.0",
     "hls.js": "^1.6.15",
     "next": "15.2.0",
     "react": "^19.0.0",

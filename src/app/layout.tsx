@@ -1,56 +1,59 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import ScrollToTop from "@/components/ScrollToTop";
+"use client";
+
+import { useEffect } from 'react';
+import { init, useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 import { Montserrat } from 'next/font/google';
+import "./globals.css";
 
-const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
-
-export const metadata: Metadata = {
-  title: "MyStream - Project Phim Cá Nhân", // Đổi tên bớt "kêu" để tránh bị quét nhầm là web lậu quy mô lớn
-  description: "Trang web học tập về lập trình và trải nghiệm trình phát video m3u8",
-  verification: {
-    google: "googlefbc84cd2aca112c0", // Thêm dòng này để xác minh dự phòng bằng thẻ Meta
-  },
-};
+const montserrat = Montserrat({ 
+  subsets: ['vietnamese'], 
+  weight: ['400', '700', '900'] 
+});
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { ref, focusKey } = useFocusable();
+
+  useEffect(() => {
+    // Khởi tạo điều hướng cho TV
+    init({
+      debug: false,
+      visualDebug: false,
+    });
+  }, []);
+
   return (
     <html lang="vi" className="scroll-smooth">
-      <body className={`${montserrat.className} antialiased selection:bg-red-600 selection:text-white bg-[#050505] text-white`}>
+      <head>
+        {/* TỐI ƯU KẾT NỐI: Giúp load ảnh và phim nhanh như Youtube */}
+        <link rel="preconnect" href="https://img.ophim.live" />
+        <link rel="preconnect" href="https://images.weserv.nl" />
+        <link rel="dns-prefetch" href="https://pro1.pl9.workers.dev" />
         
-        {/* NỀN TRANG TRÍ - ĐÃ FIX LỖI 403 NOISE */}
-        <div className="fixed inset-0 z-[-10] pointer-events-none">
-          {/* Lớp Noise dùng SVG trực tiếp, không sợ link chết */}
-          <div 
-            className="absolute inset-0 opacity-[0.02]" 
-            style={{ 
-              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` 
-            }}
-          ></div>
-          
-          {/* Đốm sáng đỏ trang trí */}
-          <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-red-600/5 blur-[120px] rounded-full"></div>
-        </div>
+        {/* Meta cho TV để tránh bị zoom nhầm giao diện */}
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      </head>
+      <body className={`${montserrat.className} antialiased bg-[#020202] text-white selection:bg-red-600`}>
+        
+        <FocusContext.Provider value={focusKey}>
+          <div ref={ref} className="min-h-screen flex flex-col overflow-hidden">
+            
+            {/* NỀN TRANG TRÍ (Gọn nhẹ, không gây lag TV) */}
+            <div className="fixed inset-0 z-[-10] pointer-events-none">
+              <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-900/10 blur-[120px] rounded-full"></div>
+              <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-zinc-900/20 blur-[100px] rounded-full"></div>
+            </div>
 
-        {/* HEADER */}
-        <Header />
+            {/* NỘI DUNG CHÍNH (Đẩy sát mép trên) */}
+            <main className="relative z-10 flex-grow">
+              {children}
+            </main>
 
-        {/* NỘI DUNG CHÍNH */}
-        <main className="relative z-10 min-h-screen">
-          {children}
-        </main>
-
-        {/* FOOTER */}
-        <Footer />
-
-        {/* SCROLL TO TOP */}
-        <ScrollToTop />
+          </div>
+        </FocusContext.Provider>
 
       </body>
     </html>
