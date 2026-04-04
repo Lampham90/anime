@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUse } from "react";
 export const dynamic = 'force-dynamic';
+import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUse } from "react";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
 import { Montserrat } from 'next/font/google';

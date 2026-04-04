@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, memo, useMemo, useCallback, useRef } from 'react';
 export const dynamic = 'force-dynamic';
+import { useState, useEffect, memo, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from "next/navigation";
 import { Montserrat } from 'next/font/google';
 import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
