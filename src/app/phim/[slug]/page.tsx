@@ -1,6 +1,7 @@
 "use client";
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 import { useState, useEffect, useRef, useCallback, useMemo, memo, use as reactUse } from "react";
 import { useRouter } from "next/navigation";
 import Hls from "hls.js";
