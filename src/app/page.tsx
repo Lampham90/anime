@@ -1,14 +1,14 @@
 "use client";
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge'; // Bắt buộc phải có dòng này cho Cloudflare Pages
+export const runtime = 'edge'; 
 
 import { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import { useRouter } from "next/navigation";
 import { Montserrat } from 'next/font/google';
 import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
 
-// Chỉ khởi tạo trên trình duyệt
+// Khởi tạo spatial navigation
 if (typeof window !== "undefined") {
   init({ throttle: 50 });
 }
@@ -58,7 +58,8 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   const imgUrl = useMemo(() => {
     const raw = movie.thumb_url || movie.poster_url || "";
     const base = raw.startsWith('http') ? raw : `${CONFIG.ORIGIN_IMG}${raw}`;
-    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=280&fit=cover&output=webp&q=70&sharp=1`;
+    // Tăng chất lượng ảnh q=90 và sharp=1 cho TV nét hơn
+    return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=300&fit=cover&output=webp&q=90&sharp=1`;
   }, [movie.slug, movie.thumb_url, movie.poster_url]);
 
   const badges = useMemo(() => {
@@ -72,21 +73,37 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   }, [movie.episode_current, movie.lang]);
 
   return (
-    <div ref={ref} className={`relative flex flex-col transition-all duration-150 ease-out transform-gpu cursor-pointer ${focused ? "scale-105 z-50 opacity-100" : "scale-100 opacity-40"}`}>
-      <div className={`aspect-[2/3] w-full rounded-2xl overflow-hidden relative bg-zinc-900 transition-all duration-300 ${focused ? "ring-[5px] ring-white shadow-[0_0_40px_rgba(255,255,255,0.4)]" : "border-2 border-white/5"}`}>
+    <div ref={ref} className={`relative flex flex-col transition-all duration-200 ease-out transform-gpu cursor-pointer ${focused ? "scale-110 z-50 opacity-100" : "scale-100 opacity-60"}`}>
+      {/* Container Poster: Tăng độ sáng (brightness-110/125) và tương phản (contrast-110) */}
+      <div className={`aspect-[2/3] w-full rounded-2xl overflow-hidden relative bg-zinc-800 transition-all duration-300 shadow-2xl ${
+        focused 
+          ? "ring-[6px] ring-white shadow-[0_0_50px_rgba(255,255,255,0.5)] brightness-125 contrast-110" 
+          : "border-2 border-white/10 brightness-110"
+      }`}>
         <img 
           src={imgUrl} 
           onLoad={() => setIsLoaded(true)}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`} 
+          className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`} 
           alt={movie.name}
         />
-        <div className="absolute top-2 right-2 flex gap-1 z-10 pointer-events-none font-black">
-            {badges.ep && <div className="bg-red-600 text-white text-[9px] px-2 py-0.5 rounded shadow-md uppercase">{badges.ep}</div>}
-            {badges.lang && <div className="bg-white text-black text-[9px] px-2 py-0.5 rounded shadow-md">{badges.lang}</div>}
+        
+        {/* Badges: To và rõ hơn */}
+        <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-10 pointer-events-none font-black scale-110">
+            {badges.ep && <div className="bg-red-600 text-white text-[10px] px-2.5 py-1 rounded-lg shadow-lg uppercase tracking-tighter">{badges.ep}</div>}
+            {badges.lang && <div className="bg-yellow-400 text-black text-[10px] px-2.5 py-1 rounded-lg shadow-lg">{badges.lang}</div>}
         </div>
+
+        {/* Gradient overlay nhẹ để làm nổi bật phần dưới poster */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60" />
       </div>
-      <div className="mt-2 h-5 overflow-hidden text-center">
-        <p className={`text-[10px] uppercase italic truncate transition-colors ${focused ? 'text-white font-black' : 'text-zinc-400 font-bold'}`}>
+
+      {/* Tiêu đề phim: Tăng font size (text-[12px]), font-black (siêu đậm) và đổ bóng mạnh */}
+      <div className="mt-3.5 px-1 h-10 overflow-hidden flex items-start justify-center text-center">
+        <p className={`text-[12.5px] uppercase italic leading-tight transition-all duration-300 tracking-wide line-clamp-2 ${
+          focused 
+            ? 'text-white font-black drop-shadow-[0_2px_10px_rgba(255,255,255,0.8)]' 
+            : 'text-zinc-100 font-black drop-shadow-[0_2px_6px_rgba(0,0,0,1)]'
+        }`}>
           {movie.name}
         </p>
       </div>
@@ -115,7 +132,6 @@ export default function HoatHinhHome() {
             setAllMovies(items);
             setLoading(false);
             
-            // Xử lý Focus sau khi data đã render
             setTimeout(() => {
                 const lastSlug = sessionStorage.getItem("last_slug");
                 const lastPage = sessionStorage.getItem("last_page");
@@ -159,7 +175,7 @@ export default function HoatHinhHome() {
     <div className="fixed inset-0 bg-[#020202] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-red-600 font-black italic animate-pulse tracking-widest text-xs">VUI LÒNG ĐỢI...</span>
+            <span className="text-red-600 font-black italic animate-pulse tracking-widest text-xs uppercase">Đang tải dữ liệu...</span>
         </div>
     </div>
   );
@@ -176,9 +192,9 @@ export default function HoatHinhHome() {
 
         {/* Page Indicator */}
         <div className="flex-1 flex items-center justify-center">
-            <div className="px-10 py-1.5 bg-zinc-900/50 border border-white/5 rounded-full backdrop-blur-md shadow-2xl">
-                <span className="text-[10px] font-black italic tracking-[6px] text-red-600">
-                    PHIM MỚI <span className="text-zinc-500 mx-2">|</span> TRANG {currentPage} / {totalPages}
+            <div className="px-10 py-2 bg-zinc-900/60 border border-white/5 rounded-full backdrop-blur-xl shadow-2xl">
+                <span className="text-[11px] font-black italic tracking-[6px] text-red-600 uppercase">
+                    Anime Mới <span className="text-zinc-500 mx-3">|</span> Trang {currentPage} / {totalPages}
                 </span>
             </div>
         </div>
