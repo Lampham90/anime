@@ -6,7 +6,7 @@ import { Montserrat } from 'next/font/google';
 import { useFocusable, FocusContext, setFocus, init } from "@noriginmedia/norigin-spatial-navigation";
 
 if (typeof window !== "undefined") {
-  init({ throttle: 50, bypassInitHasFocusTimer: true });
+ init({ throttle: 50 }); // Xóa cái đoạn bypassInitHasFocusTimer đi
 }
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
