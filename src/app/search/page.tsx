@@ -21,23 +21,7 @@ const CONFIG = {
   KEYBOARD: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "KHOẢNG CÁCH", "XÓA", "LÀM MỚI"]
 };
 
-// --- NÚT GIỌNG NÓI (CẢI TIẾN) ---
-const VoiceBtn = memo(({ isListening, onClick }) => {
-  const { ref, focused } = useFocusable({
-    focusKey: 'BTN_VOICE',
-    onEnterPress: onClick,
-  });
-
-  return (
-    <div ref={ref} className={`h-12 mb-4 rounded-xl flex items-center justify-center gap-3 transition-all border-2 cursor-pointer ${
-      focused ? "bg-white text-black scale-105 border-white shadow-xl" : isListening ? "bg-red-600 animate-pulse border-red-400" : "bg-zinc-800 text-white border-white/10"
-    }`}>
-      <span className="text-[11px] font-black italic uppercase tracking-wider">
-        {isListening ? "🔴 ĐANG NGHE..." : "🎤 TÌM BẰNG GIỌNG NÓI"}
-      </span>
-    </div>
-  );
-});
+// --- Sub Components ---
 
 const KeyItem = memo(({ char, onPress }: { char: string, onPress: (c: string) => void }) => {
   const { ref, focused } = useFocusable({
@@ -85,12 +69,14 @@ const SearchResultItem = memo(({ movie, index, page }: any) => {
           onError={(e: any) => { e.target.src = `${CONFIG.ORIGIN_IMG}${movie.thumb_url}`; setIsLoaded(true); }}
         />
       </div>
-      <p className={`mt-3 text-[12px] font-black uppercase italic px-1 leading-tight ${focused ? "text-white" : "text-zinc-500"}`}>
+      <p className={`mt-3 text-[13px] font-black uppercase italic px-1 leading-tight tracking-tight ${focused ? "text-white" : "text-zinc-500"}`}>
         {movie.name}
       </p>
     </div>
   );
 });
+
+// --- Main Page ---
 
 export default function SearchPage() {
   const router = useRouter();
@@ -99,55 +85,10 @@ export default function SearchPage() {
   const [results, setResults] = useState([]);
   const [page, setPage] = useState(1);
   const [searching, setSearching] = useState(false);
-  const [isListening, setIsListening] = useState(false);
 
   useEffect(() => { setIsClient(true); }, []);
 
   const { ref: pageRef, focusKey } = useFocusable({ isFocusBoundary: true });
-
-  // --- LOGIC GIỌNG NÓI NÂNG CAO ---
-  const handleVoiceSearch = useCallback(() => {
-    if (typeof window === "undefined") return;
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      alert("Trình duyệt TV này không hỗ trợ Voice Search. Hãy thử trên Chrome (Android TV).");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'vi-VN';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => setIsListening(true);
-    
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      if (text) {
-        setQuery(text);
-        setPage(1);
-      }
-      setIsListening(false);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Voice Error:", event.error);
-      setIsListening(false);
-      if (event.error === 'not-allowed') {
-        alert("Ní cần cấp quyền Micro trong cài đặt trình duyệt TV!");
-      }
-    };
-
-    recognition.onend = () => setIsListening(false);
-
-    try {
-      recognition.start();
-    } catch (e) {
-      setIsListening(false);
-    }
-  }, []);
 
   const handleKeypress = useCallback((char: string) => {
     if (char === "XÓA") setQuery(prev => prev.slice(0, -1));
@@ -182,20 +123,18 @@ export default function SearchPage() {
 
   return (
     <FocusContext.Provider value={focusKey}>
-      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white flex overflow-hidden`}>
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white flex overflow-hidden selection:bg-transparent`}>
         
-        {/* Sidebar */}
-        <div className="w-[380px] bg-[#0A0A0A] p-8 flex flex-col border-r border-white/10 z-50">
-          <div className="mb-6">
+        {/* Sidebar Bàn phím */}
+        <div className="w-[380px] bg-[#0A0A0A] p-8 flex flex-col border-r border-white/10 z-50 shadow-2xl">
+          <div className="mb-8">
              <p className="text-[10px] font-black text-red-600 tracking-[4px] uppercase mb-3 italic">TÌM KIẾM TV</p>
-             <div className="h-16 w-full bg-zinc-900 rounded-2xl border-2 border-white/20 flex items-center px-6 overflow-hidden">
+             <div className="h-16 w-full bg-zinc-900 rounded-2xl border-2 border-white/20 flex items-center px-6 overflow-hidden shadow-inner">
                <span className="text-2xl font-black italic uppercase truncate text-white">
                  {query}<span className="animate-pulse ml-1 text-red-600">|</span>
                </span>
              </div>
           </div>
-
-          <VoiceBtn isListening={isListening} onClick={handleVoiceSearch} />
 
           <div className="grid grid-cols-7 gap-2 mb-8">
             {CONFIG.KEYBOARD.map(k => <KeyItem key={k} char={k} onPress={handleKeypress} />)}
@@ -210,14 +149,14 @@ export default function SearchPage() {
           </div>
         </div>
 
-        {/* Kết quả (3 Cột) */}
+        {/* Khu vực kết quả (3 Cột) */}
         <div className="flex-1 flex flex-col bg-[#050505] p-12 relative">
           <div className="flex justify-between items-center mb-10">
-            <h2 className="text-4xl font-black italic uppercase tracking-tighter">
+            <h2 className="text-4xl font-black italic uppercase tracking-tighter text-white">
               {searching ? "ĐANG TÌM..." : results.length > 0 ? "KẾT QUẢ" : "NHẬP TÊN PHIM"}
             </h2>
             {totalPages > 0 && (
-              <span className="text-[12px] font-black italic text-white uppercase tracking-widest bg-red-600 px-4 py-2 rounded-xl">
+              <span className="text-[12px] font-black italic text-white uppercase tracking-widest bg-red-600 px-4 py-2 rounded-xl shadow-lg">
                 TRANG {page} / {totalPages}
               </span>
             )}
@@ -232,7 +171,7 @@ export default function SearchPage() {
               </div>
             ) : !searching && (
               <div className="h-full w-full flex items-center justify-center opacity-10">
-                <p className="text-7xl font-black italic uppercase -rotate-3 tracking-tighter">VOICE SEARCH</p>
+                <p className="text-7xl font-black italic uppercase -rotate-3 tracking-tighter text-center">GÕ TÊN PHIM ĐỂ TÌM</p>
               </div>
             )}
           </div>
@@ -246,8 +185,8 @@ const SideBtn = memo(({ label, active, onClick, fk, isRed }: any) => {
   const { ref, focused } = useFocusable({ focusKey: fk, onEnterPress: onClick });
   if (!active) return <div className="h-12 rounded-xl bg-zinc-900/40 flex items-center justify-center text-[8px] font-black text-zinc-700 opacity-30 uppercase">{label}</div>;
   return (
-    <div ref={ref} className={`h-12 rounded-xl flex items-center justify-center text-[10px] font-black italic border-2 cursor-pointer ${
-      focused ? "bg-white text-black scale-105 border-white shadow-lg" : isRed ? "bg-red-600 text-white border-red-500" : "bg-zinc-800 text-zinc-100 border-white/10"
+    <div ref={ref} className={`h-12 rounded-xl flex items-center justify-center text-[10px] font-black italic border-2 cursor-pointer transition-all ${
+      focused ? "bg-white text-black scale-105 border-white shadow-[0_0_30px_rgba(255,255,255,0.3)]" : isRed ? "bg-red-600 text-white border-red-500" : "bg-zinc-800 text-zinc-100 border-white/10"
     }`}>{label}</div>
   );
 });

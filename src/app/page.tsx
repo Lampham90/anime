@@ -224,8 +224,8 @@ export default function LightspeedHome() {
         {/* --- THANH TRẠNG THÁI 3 PHẦN (GIỮ NGUYÊN) --- */}
         {!loading && (
           <div className="absolute bottom-4 left-[5%] right-[5%] flex justify-between items-center opacity-20 font-black italic text-[11px] uppercase tracking-widest border-t border-white/5 pt-2">
-            <div className="w-2/3 text-left">Code by LamPham</div>
-            <div className="w-1/3 text-center">TRANG {currentPage} / {totalPages}</div>
+            <div className="w-1/3 text-left">Code by LamPham</div>
+            <div className="w-1/3 text-center"> {currentPage} / {totalPages}</div>
             <div className="w-1/3 text-right">NHẤN LÊN TRÊN ĐỂ TÌM KIẾM</div>
           </div>
         )}
