@@ -34,6 +34,7 @@ const workerCode = `
   };
 `;
 
+// --- COMPONENT THẺ PHIM ---
 const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }: any) => {
   const router = useRouter();
   const isTop = index < 6;
@@ -63,7 +64,7 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
     if (!path) return "";
     let finalPath = path.startsWith('http') ? path : `https://img.ophim.live/uploads/movies/${path}`;
     finalPath = finalPath.replace("http://", "https://");
-    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=350&output=webp&q=80`;
+    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=250&output=webp&q=70&il&atyp=vips`;
   }, [movie.slug]);
 
   return (
@@ -72,93 +73,78 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
         <img 
           key={movie.slug}
           src={imgUrl} 
-          loading="lazy" 
+          loading="eager" 
           alt="" 
           className="img-content"
           crossOrigin="anonymous"
           onError={(e: any) => { e.target.src = `https://img.ophim.live/uploads/movies/${movie.thumb_url}`; }}
         />
         <div className="ep-tag">{movie.episode_current || 'HD'}</div>
-        {/* Viền trắng khi focus */}
         {focused && <div className="focus-border-glow" />}
       </div>
-      <p className="title-text">{movie.name}</p>
+      
+      {/* Container tiêu đề: Cố định 36px để giữ hàng lối thẳng 1px không lệch */}
+      <div className="title-container">
+        <p className="title-text">{movie.name}</p>
+      </div>
 
       <style jsx>{`
-        .movie-card-static { width: 100%; outline: none; contain: content; }
-        
+        .movie-card-static { 
+          width: 100%; outline: none; contain: content; 
+          backface-visibility: hidden; transform: translateZ(0);
+        }
         .poster-box { 
-          position: relative; 
-          width: 100%; 
-          aspect-ratio: 2/3; 
-          border-radius: 12px; 
-          overflow: hidden; 
-          background: #1a1a1a; 
-          transition: transform 0.1s ease;
+          position: relative; width: 100%; aspect-ratio: 2/3; 
+          border-radius: 12px; overflow: hidden; background: #0a0a0a; 
+          will-change: contents;
         }
-
         .img-content { 
-          width: 100%; 
-          height: 100%; 
-          object-fit: cover; 
-          /* TĂNG ĐỘ SÁNG TẠI ĐÂY */
-          opacity: 0.75; 
-          filter: grayscale(0.2) brightness(0.85); 
-          transition: all 0.15s ease-in-out; 
+          width: 100%; height: 100%; object-fit: cover; 
+          opacity: 0.75; filter: brightness(0.85); 
+          transition: opacity 0.1s linear; 
         }
-
-        .is-active .img-content { 
-          opacity: 1; 
-          filter: grayscale(0) brightness(1.1); 
-        }
-
+        .is-active .img-content { opacity: 1; filter: brightness(1.1); }
         .focus-border-glow { 
-          position: absolute; 
-          inset: 0; 
-          border: 6px solid white; 
-          border-radius: 12px; 
-          z-index: 10; 
-          /* Thêm bóng đổ lan tỏa ra ngoài cho đẹp */
-          box-shadow: 0 0 30px rgba(255,255,255,0.5), inset 0 0 15px rgba(255,255,255,0.2); 
+          position: absolute; inset: 0; border: 6px solid white; 
+          border-radius: 12px; z-index: 10; 
+          box-shadow: 0 0 25px rgba(255,255,255,0.4); 
         }
-
         .ep-tag { 
-          position: absolute; 
-          top: 8px; 
-          right: 8px; 
-          background: #facc15; 
-          color: black; 
-          font-weight: 900; 
-          font-size: 10px; 
-          padding: 2px 6px; 
-          border-radius: 6px; 
-          z-index: 20; 
+          position: absolute; top: 8px; right: 8px; background: #facc15; 
+          color: black; font-weight: 900; font-size: 10px; 
+          padding: 2px 6px; border-radius: 6px; z-index: 20; 
         }
-
+        .title-container {
+          margin-top: 10px;
+          height: 36px; 
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+        }
         .title-text { 
-          margin-top: 10px; 
           text-transform: uppercase; 
           font-weight: 900; 
           text-align: center; 
-          white-space: nowrap; 
-          overflow: hidden; 
-          text-overflow: ellipsis; 
           width: 100%; 
-          color: #666; /* Tăng độ sáng tiêu đề phim không chọn */
-          font-size: 13px; 
+          color: #666; 
+          font-size: 12px; 
+          line-height: 1.2;
+          /* Xử lý xuống hàng tối đa 2 dòng */
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;  
+          overflow: hidden;
+          text-overflow: ellipsis;
+          word-break: break-word;
           transition: color 0.1s;
         }
-
-        .is-active .title-text { 
-          color: white; 
-          font-style: italic; 
-          font-size: 14px; 
-        }
+        .is-active .title-text { color: white; font-style: italic; }
       `}</style>
     </div>
   );
 });
 
+// --- TRANG CHỦ ---
 export default function LightspeedHome() {
   const [allMovies, setAllMovies] = useState<any[]>([]);
   const [currentItems, setCurrentItems] = useState<any[]>([]);
@@ -166,7 +152,6 @@ export default function LightspeedHome() {
   const [loading, setLoading] = useState(true);
   const workerRef = useRef<Worker | null>(null);
   
-  // CHIÊU 1: Gán focusKey cho main để quản lý tập trung
   const { ref: pageRef, focusKey, focusSelf } = useFocusable({
     focusKey: 'HOME_PAGE',
     trackChildren: true,
@@ -180,13 +165,11 @@ export default function LightspeedHome() {
     workerRef.current.onmessage = (e) => { 
       setCurrentItems(e.data.items); 
       setLoading(false); 
-      
-      // CHIÊU 2: Sau khi có data, đợi DOM render xong rồi mới ép focus
       requestAnimationFrame(() => {
         const lastSlug = sessionStorage.getItem("last_slug");
         if (lastSlug) {
           setFocus(`MOVIE_${lastSlug}`);
-          sessionStorage.removeItem("last_slug"); // Xóa để lần sau vào lại từ đầu
+          sessionStorage.removeItem("last_slug");
         } else if (e.data.items.length > 0) {
           setFocus(`MOVIE_${e.data.items[0].slug}`);
         }
@@ -206,42 +189,60 @@ export default function LightspeedHome() {
     return () => workerRef.current?.terminate();
   }, []);
 
-  // Đảm bảo focus không bị lạc trôi khi quay lại
   useEffect(() => {
-    if (!loading) {
-      focusSelf();
-    }
+    if (!loading) focusSelf();
   }, [loading, focusSelf]);
 
   const changePage = useCallback((p: number, pos: string, col: number) => {
     setCurrentPage(p);
     workerRef.current?.postMessage({ type: 'PROCESS_PAGE', allMovies: allMovies, page: p, limit: 12 });
-    const targetIdx = (p - 1) * 12 + (pos === 'TOP' ? col : col + 6);
-    const target = allMovies[targetIdx];
-    if (target) setTimeout(() => setFocus(`MOVIE_${target.slug}`), 0);
+    requestAnimationFrame(() => {
+        const targetIdx = (p - 1) * 12 + (pos === 'TOP' ? col : col + 6);
+        const target = allMovies[targetIdx];
+        if (target) setFocus(`MOVIE_${target.slug}`);
+    });
   }, [allMovies]);
 
-  if (loading) return <div className="h-screen bg-black flex items-center justify-center text-white font-black italic text-2xl uppercase">Loading...</div>;
+  const totalPages = useMemo(() => Math.ceil(allMovies.length / 12), [allMovies]);
 
   return (
     <FocusContext.Provider value={focusKey}>
+      <link rel="dns-prefetch" href="https://wsrv.nl" />
+      <link rel="preconnect" href="https://wsrv.nl" crossOrigin="anonymous" />
+      
       <main 
         ref={pageRef} 
         className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white flex flex-col px-[5%] pt-4 overflow-hidden relative`}
       >
-        <div className="grid grid-cols-6 gap-x-8 gap-y-12 flex-1 content-start h-full overflow-hidden pt-2">
-          {currentItems.map((m, i) => (
-            <MovieCard 
-              key={m.slug} 
-              movie={m} 
-              index={i} 
-              currentPage={currentPage} 
-              totalPages={Math.ceil(allMovies.length / 12)} 
-              onPageChange={changePage} 
-            />
-          ))}
-        </div>
-        <div className="absolute bottom-4 right-8 opacity-5 text-[10px] font-black italic uppercase">P.{currentPage}</div>
+        {!loading && (
+          <div className="grid grid-cols-6 gap-x-8 gap-y-12 flex-1 content-start h-full overflow-hidden pt-2">
+            {currentItems.map((m, i) => (
+              <MovieCard 
+                key={m.slug} 
+                movie={m} 
+                index={i} 
+                currentPage={currentPage} 
+                totalPages={totalPages} 
+                onPageChange={changePage} 
+              />
+            ))}
+          </div>
+        )}
+
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center font-black italic text-xl uppercase">
+            Loading...
+          </div>
+        )}
+
+        {/* --- THANH TRẠNG THÁI 3 PHẦN --- */}
+        {!loading && (
+          <div className="absolute bottom-4 left-[5%] right-[5%] flex justify-between items-center opacity-20 font-black italic text-[11px] uppercase tracking-widest border-t border-white/5 pt-2">
+            <div className="w-1/3 text-left">ANIME</div>
+            <div className="w-1/3 text-center">TRANG {currentPage} / {totalPages}</div>
+            <div className="w-1/3 text-right">NHẤN LÊN TRÊN ĐỂ TÌM KIẾM</div>
+          </div>
+        )}
       </main>
     </FocusContext.Provider>
   );
