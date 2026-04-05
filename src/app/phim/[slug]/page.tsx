@@ -15,7 +15,7 @@ if (typeof window !== "undefined") {
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', '900'] });
 
-// --- HIỂN THỊ TIẾN TRÌNH PHIM ---
+// --- [COMPONENT: HIỂN THỊ TIẾN TRÌNH PHIM - KHÓA] ---
 const TimeDisplay = memo(({ currentTime, duration }: { currentTime: number, duration: number }) => {
   const format = (s: number) => {
     if (isNaN(s) || s < 0) return "00:00";
@@ -25,20 +25,20 @@ const TimeDisplay = memo(({ currentTime, duration }: { currentTime: number, dura
     return `${h > 0 ? h + ':' : ''}${m < 10 ? '0' + m : m}:${sec < 10 ? '0' + sec : sec}`;
   };
   return (
-    <div className="flex justify-between mb-4 font-black italic uppercase tracking-tighter items-end w-full">
+    <div className="flex justify-between mb-4 font-black italic uppercase tracking-tighter items-end w-full text-white">
       <div className="flex flex-col text-left">
         <span className="text-white/30 text-[10px] mb-1 tracking-widest uppercase">Đang xem</span>
-        <span className="text-red-600 text-5xl leading-none">{format(currentTime)}</span>
+        <span className="text-red-600 text-4xl leading-none">{format(currentTime)}</span>
       </div>
       <div className="flex flex-col text-right">
         <span className="text-white/30 text-[10px] mb-1 tracking-widest uppercase">Thời lượng</span>
-        <span className="text-white/60 text-2xl leading-none">{format(duration)}</span>
+        <span className="text-white/60 text-xl leading-none">{format(duration)}</span>
       </div>
     </div>
   );
 });
 
-// --- NÚT BẤM TV ---
+// --- [COMPONENT: NÚT BẤM TV - KHÓA] ---
 const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any) => {
   const { ref, focused } = useFocusable({ 
     focusKey: fk, 
@@ -58,12 +58,11 @@ const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any
     <button
       ref={ref}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`px-8 py-3.5 rounded-2xl font-black transition-all duration-150 outline-none border-[3px] text-[12px] uppercase tracking-tighter transform-gpu ${
-        isActive ? "bg-red-600 text-white border-red-400 shadow-[0_0_25px_rgba(220,38,38,0.4)]" : 
-        focused ? "bg-white text-black scale-105 z-50 border-white shadow-2xl" : 
+      className={`px-5 py-2.5 rounded-xl font-black transition-all duration-150 outline-none border-[3px] text-[10px] uppercase tracking-tighter transform-gpu ${
+        isActive ? "bg-red-600 text-white border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.4)]" : 
+        focused ? "bg-white text-black scale-105 z-50 border-white shadow-lg" : 
         isPrimary ? "bg-zinc-100 text-black border-white" : "bg-white/5 text-zinc-400 border-white/5"
       }`}
-      style={{ willChange: 'transform' }}
     >
       {name}
     </button>
@@ -93,6 +92,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
+  // --- [LOGIC THOÁT & LƯU - KHÓA] ---
   const exitPlayer = useCallback(() => {
     if (videoRef.current) {
       if (videoRef.current.currentTime > 5) {
@@ -113,39 +113,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     setTimeout(() => setFocus("MAIN_PLAY_BTN"), 250);
   }, [slug, currentEpIndex, activeServer]);
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement && isPlaying) {
-        exitPlayer();
-      }
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
-    };
-  }, [isPlaying, exitPlayer]);
-
-  useEffect(() => {
-    fetch(`https://ch.3ks.workers.dev/v1/api/phim/${slug}`)
-      .then(r => r.json())
-      .then(json => {
-        if (json?.data?.item) {
-          setMovie(json.data.item);
-          setServers(json.data.item.episodes || []);
-          const saved = localStorage.getItem(`last_ep_${slug}`);
-          if (saved) {
-            const { epIdx, svIdx } = JSON.parse(saved);
-            setCurrentEpIndex(epIdx);
-            setActiveServer(svIdx);
-          }
-          setIsLoading(false);
-          requestAnimationFrame(() => setTimeout(() => setFocus("MAIN_PLAY_BTN"), 150));
-        }
-      });
-  }, [slug]);
-
+  // --- [LOGIC HLS & TUA PHIM - KHÓA] ---
   useEffect(() => {
     if (isPlaying && servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8 && videoRef.current) {
       if (hlsRef.current) hlsRef.current.destroy();
@@ -169,6 +137,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     }
   }, [isPlaying, currentEpIndex, activeServer, slug, servers, exitPlayer]);
 
+  // --- [ĐIỀU KHIỂN REMOTE - KHÓA] ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isBackKey = e.key === "Escape" || e.key === "Backspace" || e.keyCode === 10009 || e.keyCode === 461;
@@ -214,6 +183,26 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [isPlaying, showQuickMenu, currentEpIndex, displayTime, duration, exitPlayer, router]);
 
+  // --- [TẢI DATA PHIM] ---
+  useEffect(() => {
+    fetch(`https://ch.3ks.workers.dev/v1/api/phim/${slug}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json?.data?.item) {
+          setMovie(json.data.item);
+          setServers(json.data.item.episodes || []);
+          const saved = localStorage.getItem(`last_ep_${slug}`);
+          if (saved) {
+            const { epIdx, svIdx } = JSON.parse(saved);
+            setCurrentEpIndex(epIdx);
+            setActiveServer(svIdx);
+          }
+          setIsLoading(false);
+          requestAnimationFrame(() => setTimeout(() => setFocus("MAIN_PLAY_BTN"), 150));
+        }
+      });
+  }, [slug]);
+
   useEffect(() => {
     const v = videoRef.current; if (!v) return;
     const sync = () => { if (!seekTimeout.current) { setDisplayTime(v.currentTime); setDuration(v.duration); } };
@@ -225,13 +214,10 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return () => { v.removeEventListener('timeupdate', sync); v.removeEventListener('loadedmetadata', sync); };
   }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer]);
 
-  // --- FIX LỖI ẢNH KHI LÊN WEB ---
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
     const raw = movie.thumb_url || movie.poster_url || ""; 
-    // Luôn đảm bảo dùng HTTPS và qua Proxy wsrv.nl để vượt rào Referrer
     let base = raw.startsWith('http') ? raw : `https://img.ophim.live/uploads/movies/${raw}`;
-    // Proxy giúp giấu trang web của ní khỏi server ảnh bị chặn
     return `https://wsrv.nl/?url=${encodeURIComponent(base.replace("http://", "https://"))}&w=600&fit=cover&output=webp&q=80`;
   }, [movie]);
 
@@ -239,51 +225,61 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
 
   return (
     <FocusContext.Provider value={focusKey}>
-      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden relative transform-gpu`}>
+      <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden relative flex items-center justify-center`}>
         
-        {/* NỀN CHI TIẾT */}
+        {/* --- UI: LỚP NỀN BLUR --- */}
         {!isPlaying && (
-          <div className="absolute inset-0 z-0 pointer-events-none opacity-20 transform-gpu">
-            <img 
-              src={finalImgUrl} 
-              referrerPolicy="no-referrer" 
-              className="w-full h-full object-cover blur-[100px] scale-110" 
-              alt="" 
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#020202] via-transparent to-[#020202]/60" />
+          <div className="absolute inset-0 z-0 pointer-events-none opacity-30">
+            <img src={finalImgUrl} referrerPolicy="no-referrer" className="w-full h-full object-cover blur-[60px]" alt="" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/70 to-black" />
           </div>
         )}
 
-        {/* THÔNG TIN PHIM */}
+        {/* --- UI: CHI TIẾT PHIM (FIX: TỰA NHỎ LẠI & CÂN ĐỐI) --- */}
         {!isPlaying && (
-          <div className="relative z-10 h-full flex flex-col justify-center px-24 py-10 animate-in fade-in duration-500">
-            <div className="flex gap-20 items-start">
-              <div className="w-[380px] flex-shrink-0 shadow-[0_0_80px_rgba(0,0,0,0.8)] rounded-[45px] overflow-hidden border-2 border-white/5">
-                <img 
-                  src={finalImgUrl} 
-                  referrerPolicy="no-referrer" 
-                  className="w-full aspect-[2/3] object-cover" 
-                  alt="poster" 
-                />
+          <div className="relative z-10 w-full max-w-[1100px] px-10 animate-in fade-in zoom-in-95 duration-500">
+            <div className="flex gap-12 items-center">
+              
+              {/* Poster bên trái (Thu nhỏ nhẹ) */}
+              <div className="w-[280px] flex-shrink-0 shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-[25px] overflow-hidden border-2 border-white/10 aspect-[2/3]">
+                <img src={finalImgUrl} referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="poster" />
               </div>
-              <div className="flex-1 pt-6">
-                <div className="mb-10 opacity-50"><TVButton focusKey="BACK_HOME" name="← Trang chủ" onClick={() => router.push("/")} /></div>
-                <h1 className="text-8xl font-black mb-8 italic uppercase leading-[0.85] tracking-tighter drop-shadow-2xl">{movie?.name}</h1>
-                <div className="mb-16">
-                  <TVButton focusKey="MAIN_PLAY_BTN" name={currentEpIndex > 0 ? `Tiếp tục tập ${servers[activeServer]?.server_data[currentEpIndex]?.name}` : `Xem phim ngay`} isPrimary onClick={() => setIsPlaying(true)} />
+
+              {/* Thông tin bên phải */}
+              <div className="flex-1 flex flex-col justify-center">
+                <div className="mb-4 opacity-40 scale-90 origin-left">
+                  <TVButton focusKey="BACK_HOME" name="← Trang chủ" onClick={() => router.push("/")} />
                 </div>
-                <div className="grid grid-cols-1 gap-12">
-                  <div>
-                    <h3 className="text-white/20 font-black mb-5 uppercase text-[10px] tracking-[0.4em] italic">Máy chủ</h3>
-                    <div className="flex gap-3">
+                
+                {/* TỰA PHIM NHỎ LẠI (text-5xl) */}
+                <h1 className="text-5xl font-black mb-4 italic uppercase leading-tight tracking-tighter text-white drop-shadow-2xl">
+                  {movie?.name}
+                </h1>
+
+                <div className="flex gap-4 mb-8 scale-110 origin-left">
+                  <TVButton 
+                    focusKey="MAIN_PLAY_BTN" 
+                    name={currentEpIndex > 0 ? `Tiếp tục tập ${servers[activeServer]?.server_data[currentEpIndex]?.name}` : `Xem phim ngay`} 
+                    isPrimary 
+                    onClick={() => setIsPlaying(true)} 
+                  />
+                </div>
+
+                <div className="space-y-6">
+                  {/* Chọn Máy chủ */}
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <h3 className="text-white/30 font-black mb-2 uppercase text-[8px] tracking-[0.3em] italic">Máy chủ</h3>
+                    <div className="flex flex-wrap gap-2">
                       {servers.map((s, i) => (
                         <TVButton key={`sv-${i}`} focusKey={`SV_BTN_${i}`} name={s.server_name} isActive={activeServer === i} onClick={() => { setActiveServer(i); setCurrentEpIndex(0); }} />
                       ))}
                     </div>
                   </div>
-                  <div>
-                    <h3 className="text-red-600 font-black mb-5 uppercase text-[10px] tracking-[0.4em] italic">Danh sách tập</h3>
-                    <div className="flex flex-wrap gap-2 max-h-[30vh] overflow-y-auto pr-4 no-scrollbar">
+
+                  {/* Chọn Tập phim */}
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <h3 className="text-red-600 font-black mb-2 uppercase text-[8px] tracking-[0.3em] italic">Danh sách tập</h3>
+                    <div className="flex flex-wrap gap-2 max-h-[150px] overflow-y-auto pr-2 no-scrollbar">
                       {servers[activeServer]?.server_data?.map((ep: any, i: number) => (
                           <TVButton key={`ep-${i}`} focusKey={`PAGE_EP_BTN_${i}`} name={ep.name} isActive={currentEpIndex === i} onClick={() => { setCurrentEpIndex(i); setIsPlaying(true); }} />
                       ))}
@@ -295,33 +291,23 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
           </div>
         )}
 
-        {/* --- TRÌNH PHÁT (FIX CĂN GIỮA TUYỆT ĐỐI) --- */}
+        {/* --- [TRÌNH PHÁT - KHÓA] --- */}
         {isPlaying && (
-          <div 
-            ref={playerContainerRef} 
-            className="fixed inset-0 z-[99999] bg-black flex items-center justify-center overflow-hidden animate-in fade-in duration-700"
-            style={{ width: '100vw', height: '100vh' }}
-          >
-            <video 
-              ref={videoRef} 
-              playsInline
-              className="w-full h-full object-contain transform-gpu" 
-              style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', margin: 'auto' }}
-            />
+          <div ref={playerContainerRef} className="fixed inset-0 z-[99999] bg-black flex items-center justify-center overflow-hidden">
+            <video ref={videoRef} playsInline className="w-full h-full object-contain" />
             {showControls && !showQuickMenu && (
-              <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-[1200px] bg-black/80 backdrop-blur-3xl p-8 rounded-[40px] border border-white/10 animate-in slide-in-from-bottom-10 duration-300">
+              <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-[1000px] bg-black/80 backdrop-blur-3xl p-8 rounded-[40px] border border-white/10">
                   <TimeDisplay currentTime={displayTime} duration={duration} />
-                  <div className="relative h-2.5 w-full bg-white/10 rounded-full overflow-hidden mt-4">
-                      <div className="absolute inset-0 bg-red-600 origin-left transition-transform duration-200"
-                           style={{ transform: `scaleX(${duration ? displayTime / duration : 0})` }} />
+                  <div className="relative h-2 w-full bg-white/10 rounded-full overflow-hidden mt-4">
+                      <div className="absolute inset-0 bg-red-600 origin-left" style={{ transform: `scaleX(${duration ? displayTime / duration : 0})` }} />
                   </div>
               </div>
             )}
             {showQuickMenu && (
-              <div className="absolute inset-0 bg-black/95 backdrop-blur-3xl flex flex-col justify-center px-20 z-[100] animate-in fade-in duration-300">
-                <div className="max-w-[1400px] mx-auto w-full">
-                  <h2 className="text-white font-black text-6xl mb-10 italic border-l-[12px] border-red-600 pl-8 uppercase tracking-tighter">Chọn tập nhanh</h2>
-                  <div className="flex flex-wrap gap-4 p-2 max-h-[65vh] overflow-y-auto no-scrollbar">
+              <div className="absolute inset-0 bg-black/95 backdrop-blur-3xl flex flex-col justify-center px-20 z-[100]">
+                <div className="max-w-[1000px] mx-auto w-full">
+                  <h2 className="text-white font-black text-4xl mb-6 italic border-l-[10px] border-red-600 pl-6 uppercase tracking-tighter">Chọn tập nhanh</h2>
+                  <div className="flex flex-wrap gap-2 p-2 max-h-[60vh] overflow-y-auto no-scrollbar">
                     {servers[activeServer]?.server_data?.map((ep: any, i: number) => (
                       <TVButton key={`q-${i}`} focusKey={`QUICK_EP_${i}`} name={ep.name} isActive={currentEpIndex === i} onClick={() => { setCurrentEpIndex(i); setShowQuickMenu(false); }} />
                     ))}
