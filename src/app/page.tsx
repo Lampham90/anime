@@ -59,12 +59,11 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   });
 
   const imgUrl = useMemo(() => {
-    const path = movie.thumb_url || movie.poster_url || "";
-    if (!path) return "";
-    let finalPath = path.startsWith('http') ? path : `https://img.ophim.live/uploads/movies/${path}`;
-    finalPath = finalPath.replace("http://", "https://");
-    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=350&output=webp&q=80`;
-  }, [movie.slug]);
+      const raw = movie.thumb_url || movie.poster_url || "";
+      const base = raw.startsWith('http') ? raw : `${CONFIG.ORIGIN_IMG}${raw}`;
+      return `https://images.weserv.nl/?url=${encodeURIComponent(base)}&w=300&fit=cover&output=webp`;
+    }, [movie]);
+
 
   return (
     <div ref={ref} className={`movie-card-static ${focused ? 'is-active' : ''}`}>

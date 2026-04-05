@@ -278,7 +278,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   // --- [XỬ LÝ POSTER: FIX TRIỆT ĐỂ LỖI HIỂN THỊ] ---
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
-    let rawPath = movie.thumb_url || movie.poster_url || ""; 
+    let rawPath = movie.poster_url || movie.thumb_url || ""; 
     if (!rawPath) return "";
 
     let fullUrl = "";
@@ -325,8 +325,8 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
                     alt="poster" 
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      if (movie?.thumb_url && !target.src.includes('ophim1')) {
-                        target.src = `https://img.ophim1.com/uploads/movies/${movie.thumb_url}`;
+                      if (movie?.poster_url && !target.src.includes('ophim1')) {
+                        target.src = `https://img.ophim1.com/uploads/movies/${movie.poster_url}`;
                       }
                     }}
                   />
