@@ -38,7 +38,7 @@ const TimeDisplay = memo(({ currentTime, duration }: { currentTime: number, dura
   );
 });
 
-// --- [COMPONENT: NÚT BẤM TV - KHÓA] ---
+// --- [COMPONENT: NÚT BẤM TV - HIỆU ỨNG NHẬN DIỆN MẠNH] ---
 const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any) => {
   const { ref, focused } = useFocusable({ 
     focusKey: fk, 
@@ -58,12 +58,18 @@ const TVButton = memo(({ name, onClick, focusKey: fk, isActive, isPrimary }: any
     <button
       ref={ref}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`px-5 py-2.5 rounded-xl font-black transition-all duration-150 outline-none border-[3px] text-[10px] uppercase tracking-tighter transform-gpu ${
-        isActive ? "bg-red-600 text-white border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.4)]" : 
-        focused ? "bg-white text-black scale-105 z-50 border-white shadow-lg" : 
-        isPrimary ? "bg-zinc-100 text-black border-white" : "bg-white/5 text-zinc-400 border-white/5"
+      className={`relative px-5 py-2.5 rounded-xl font-black transition-all duration-200 outline-none border-[3px] text-[10px] uppercase tracking-tighter transform-gpu ${
+        focused 
+          ? "bg-white text-black scale-115 z-[100] border-red-500 shadow-[0_0_40px_rgba(255,255,255,0.6)] ring-4 ring-red-600/30" 
+          : isActive 
+            ? "bg-red-600 text-white border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.4)]" 
+            : isPrimary 
+              ? "bg-zinc-100 text-black border-white/20" 
+              : "bg-white/5 text-zinc-400 border-white/5"
       }`}
+      style={{ willChange: 'transform' }}
     >
+      {focused && <span className="absolute inset-0 rounded-lg animate-pulse bg-white/20 pointer-events-none" />}
       {name}
     </button>
   );
@@ -92,7 +98,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   
   const { ref: pageRef, focusKey } = useFocusable({ trackChildren: true });
 
-  // --- [LOGIC THOÁT & LƯU - KHÓA] ---
   const exitPlayer = useCallback(() => {
     if (videoRef.current) {
       if (videoRef.current.currentTime > 5) {
@@ -113,17 +118,27 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     setTimeout(() => setFocus("MAIN_PLAY_BTN"), 250);
   }, [slug, currentEpIndex, activeServer]);
 
-  // --- [LOGIC HLS & TUA PHIM - KHÓA] ---
+  // --- [TỐI ƯU TỐC ĐỘ PHÁT & ÂM LƯỢNG MAX] ---
   useEffect(() => {
     if (isPlaying && servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8 && videoRef.current) {
       if (hlsRef.current) hlsRef.current.destroy();
-      const hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 30, enableWorker: true });
+      
+      // ÉP ÂM LƯỢNG 100% (1.0)
+      videoRef.current.volume = 1.0;
+
+      const hls = new Hls({ 
+        enableWorker: true,
+        maxBufferLength: 20,
+        startLevel: -1,
+        initialLiveManifestSize: 1,
+      });
       hlsRef.current = hls;
       hls.loadSource(servers[activeServer].server_data[currentEpIndex].link_m3u8);
       hls.attachMedia(videoRef.current);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         const saved = localStorage.getItem(`progress_${slug}_${currentEpIndex}`);
         if (saved && videoRef.current) videoRef.current.currentTime = parseFloat(saved);
+        if (videoRef.current) videoRef.current.volume = 1.0; // Đảm bảo lại lần nữa khi bắt đầu chạy
         videoRef.current?.play().catch(() => {});
         playerContainerRef.current?.requestFullscreen().catch(() => {});
       });
@@ -137,7 +152,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     }
   }, [isPlaying, currentEpIndex, activeServer, slug, servers, exitPlayer]);
 
-  // --- [ĐIỀU KHIỂN REMOTE - KHÓA] ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isBackKey = e.key === "Escape" || e.key === "Backspace" || e.keyCode === 10009 || e.keyCode === 461;
@@ -183,7 +197,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [isPlaying, showQuickMenu, currentEpIndex, displayTime, duration, exitPlayer, router]);
 
-  // --- [TẢI DATA PHIM] ---
   useEffect(() => {
     fetch(`https://ch.3ks.workers.dev/v1/api/phim/${slug}`)
       .then(r => r.json())
@@ -209,10 +222,15 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     v.addEventListener('timeupdate', sync);
     v.addEventListener('loadedmetadata', sync);
     v.addEventListener('ended', () => {
-        if (currentEpIndex < (servers[activeServer]?.server_data.length || 0) - 1) setCurrentEpIndex(p => p + 1); else exitPlayer();
+        localStorage.removeItem(`progress_${slug}_${currentEpIndex}`);
+        if (currentEpIndex < (servers[activeServer]?.server_data.length || 0) - 1) {
+            setCurrentEpIndex(p => p + 1);
+        } else {
+            exitPlayer();
+        }
     });
     return () => { v.removeEventListener('timeupdate', sync); v.removeEventListener('loadedmetadata', sync); };
-  }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer]);
+  }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer, slug]);
 
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
@@ -227,7 +245,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     <FocusContext.Provider value={focusKey}>
       <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-[#020202] text-white overflow-hidden relative flex items-center justify-center`}>
         
-        {/* --- UI: LỚP NỀN BLUR --- */}
         {!isPlaying && (
           <div className="absolute inset-0 z-0 pointer-events-none opacity-30">
             <img src={finalImgUrl} referrerPolicy="no-referrer" className="w-full h-full object-cover blur-[60px]" alt="" />
@@ -235,38 +252,31 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
           </div>
         )}
 
-        {/* --- UI: CHI TIẾT PHIM (FIX: TỰA NHỎ LẠI & CÂN ĐỐI) --- */}
         {!isPlaying && (
           <div className="relative z-10 w-full max-w-[1100px] px-10 animate-in fade-in zoom-in-95 duration-500">
             <div className="flex gap-12 items-center">
-              
-              {/* Poster bên trái (Thu nhỏ nhẹ) */}
               <div className="w-[280px] flex-shrink-0 shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-[25px] overflow-hidden border-2 border-white/10 aspect-[2/3]">
                 <img src={finalImgUrl} referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="poster" />
               </div>
 
-              {/* Thông tin bên phải */}
               <div className="flex-1 flex flex-col justify-center">
                 <div className="mb-4 opacity-40 scale-90 origin-left">
                   <TVButton focusKey="BACK_HOME" name="← Trang chủ" onClick={() => router.push("/")} />
                 </div>
+                <h1 className="text-5xl font-black mb-4 italic uppercase leading-tight tracking-tighter text-white drop-shadow-2xl">{movie?.name}</h1>
                 
-                {/* TỰA PHIM NHỎ LẠI (text-5xl) */}
-                <h1 className="text-5xl font-black mb-4 italic uppercase leading-tight tracking-tighter text-white drop-shadow-2xl">
-                  {movie?.name}
-                </h1>
-
                 <div className="flex gap-4 mb-8 scale-110 origin-left">
                   <TVButton 
                     focusKey="MAIN_PLAY_BTN" 
-                    name={currentEpIndex > 0 ? `Tiếp tục tập ${servers[activeServer]?.server_data[currentEpIndex]?.name}` : `Xem phim ngay`} 
+                    name={currentEpIndex > 0 || localStorage.getItem(`progress_${slug}_${currentEpIndex}`) 
+                      ? `Tiếp tục: ${servers[activeServer]?.server_data[currentEpIndex]?.name}` 
+                      : `Xem phim ngay`} 
                     isPrimary 
                     onClick={() => setIsPlaying(true)} 
                   />
                 </div>
 
                 <div className="space-y-6">
-                  {/* Chọn Máy chủ */}
                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                     <h3 className="text-white/30 font-black mb-2 uppercase text-[8px] tracking-[0.3em] italic">Máy chủ</h3>
                     <div className="flex flex-wrap gap-2">
@@ -275,8 +285,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
                       ))}
                     </div>
                   </div>
-
-                  {/* Chọn Tập phim */}
                   <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                     <h3 className="text-red-600 font-black mb-2 uppercase text-[8px] tracking-[0.3em] italic">Danh sách tập</h3>
                     <div className="flex flex-wrap gap-2 max-h-[150px] overflow-y-auto pr-2 no-scrollbar">
@@ -291,9 +299,9 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
           </div>
         )}
 
-        {/* --- [TRÌNH PHÁT - KHÓA] --- */}
         {isPlaying && (
           <div ref={playerContainerRef} className="fixed inset-0 z-[99999] bg-black flex items-center justify-center overflow-hidden">
+            {/* Thêm mặc định volume trực tiếp vào thẻ video */}
             <video ref={videoRef} playsInline className="w-full h-full object-contain" />
             {showControls && !showQuickMenu && (
               <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-[1000px] bg-black/80 backdrop-blur-3xl p-8 rounded-[40px] border border-white/10">
