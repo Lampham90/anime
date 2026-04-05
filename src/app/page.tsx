@@ -24,7 +24,7 @@ if (typeof window !== "undefined") {
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['900'] });
 
-// --- COMPONENT THẺ PHIM (TỐI ƯU GIẢI MÃ ẢNH) ---
+// --- COMPONENT THẺ PHIM (CẤU HÌNH SIÊU NHẸ CHO TV) ---
 const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }: any) => {
   const router = useRouter();
   const isTop = index < 6;
@@ -54,9 +54,11 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   const imgUrl = useMemo(() => {
     const path = movie.poster_url || movie.thumb_url || "";
     if (!path) return "";
-    // Kết nối thẳng tới server gốc của OPhim
     let finalPath = path.startsWith('http') ? path : `https://img.ophim.live/uploads/movies/${path}`;
-    return finalPath.replace("http://", "https://");
+    finalPath = finalPath.replace("http://", "https://");
+    
+    // TỐI ƯU CỰC HẠN: w=180 (nhẹ RAM), q=50 (giảm tải mạng), output=jpg (nhẹ CPU TV)
+    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=180&output=jpg&q=50&il&atyp=vips`;
   }, [movie.slug]);
 
   return (
@@ -94,12 +96,12 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
         .poster-box { 
           position: relative; width: 100%; aspect-ratio: 2/3; 
           border-radius: 12px; overflow: hidden; background: #0a0a0a; 
-          will-change: contents;
+          will-change: transform;
         }
         .img-content { 
           width: 100%; height: 100%; object-fit: cover; 
           opacity: 0;
-          transition: opacity 0.2s ease-in, transform 0.15s ease-out;
+          transition: opacity 0.2s ease-in;
         }
         .img-content.loaded { opacity: 0.75; }
         .is-active .img-content.loaded { opacity: 1; transform: scale(1.03); }
@@ -146,6 +148,7 @@ export default function LightspeedHome() {
   const loadData = useCallback(async (page: number, targetPos?: { pos: string, col: number }) => {
     setLoading(true);
     try {
+      // Dùng API chia trang để TV chỉ phải xử lý đúng 12 phim một lần
       const res = await fetch(`https://ch.3ks.workers.dev/v1/api/danh-sach/hoat-hinh?limit=12&page=${page}`).then(r => r.json());
       const items = res?.data?.items || [];
       
@@ -218,9 +221,10 @@ export default function LightspeedHome() {
           </div>
         )}
 
+        {/* --- THANH TRẠNG THÁI 3 PHẦN (GIỮ NGUYÊN) --- */}
         {!loading && (
           <div className="absolute bottom-4 left-[5%] right-[5%] flex justify-between items-center opacity-20 font-black italic text-[11px] uppercase tracking-widest border-t border-white/5 pt-2">
-            <div className="w-1/3 text-left">Code by LamPham</div>
+            <div className="w-1/3 text-left">ANIME</div>
             <div className="w-1/3 text-center">TRANG {currentPage} / {totalPages}</div>
             <div className="w-1/3 text-right">NHẤN LÊN TRÊN ĐỂ TÌM KIẾM</div>
           </div>
