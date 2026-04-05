@@ -325,8 +325,8 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
                     alt="poster" 
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
-                      if (movie?.poster_url && !target.src.includes('ophim1')) {
-                        target.src = `https://img.ophim1.com/uploads/movies/${movie.poster_url}`;
+                      if (movie?.thumb_url && !target.src.includes('ophim1')) {
+                        target.src = `https://img.ophim1.com/uploads/movies/${movie.thumb_url}`;
                       }
                     }}
                   />
