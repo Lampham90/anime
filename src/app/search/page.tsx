@@ -17,12 +17,11 @@ const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['400', '700', 
 const CONFIG = {
   WORKER: process.env.NEXT_PUBLIC_WORKER || "https://ch.3ks.workers.dev",
   ORIGIN_IMG: "https://img.ophim.live/uploads/movies/",
-  ITEMS_PER_PAGE: 3, // <--- THAY ĐỔI 1: Chỉ hiện 3 phim mỗi trang
+  ITEMS_PER_PAGE: 3, 
   KEYBOARD: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "KHOẢNG CÁCH", "XÓA", "LÀM MỚI"]
 };
 
-// --- Sub Components ---
-
+// --- NÚT GIỌNG NÓI (CẢI TIẾN) ---
 const VoiceBtn = memo(({ isListening, onClick }) => {
   const { ref, focused } = useFocusable({
     focusKey: 'BTN_VOICE',
@@ -86,15 +85,12 @@ const SearchResultItem = memo(({ movie, index, page }: any) => {
           onError={(e: any) => { e.target.src = `${CONFIG.ORIGIN_IMG}${movie.thumb_url}`; setIsLoaded(true); }}
         />
       </div>
-      {/* THAY ĐỔI 2: Tựa phim xuống hàng đầy đủ, không bị cắt bớt */}
-      <p className={`mt-2 text-[11px] font-black uppercase italic px-1 ${focused ? "text-white" : "text-zinc-500"}`}>
+      <p className={`mt-3 text-[12px] font-black uppercase italic px-1 leading-tight ${focused ? "text-white" : "text-zinc-500"}`}>
         {movie.name}
       </p>
     </div>
   );
 });
-
-// --- Main Page ---
 
 export default function SearchPage() {
   const router = useRouter();
@@ -109,23 +105,48 @@ export default function SearchPage() {
 
   const { ref: pageRef, focusKey } = useFocusable({ isFocusBoundary: true });
 
+  // --- LOGIC GIỌNG NÓI NÂNG CAO ---
   const handleVoiceSearch = useCallback(() => {
+    if (typeof window === "undefined") return;
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
     if (!SpeechRecognition) {
-      alert("TV không hỗ trợ Micro qua trình duyệt.");
+      alert("Trình duyệt TV này không hỗ trợ Voice Search. Hãy thử trên Chrome (Android TV).");
       return;
     }
+
     const recognition = new SpeechRecognition();
     recognition.lang = 'vi-VN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
     recognition.onstart = () => setIsListening(true);
+    
     recognition.onresult = (event: any) => {
       const text = event.results[0][0].transcript;
-      setQuery(text);
+      if (text) {
+        setQuery(text);
+        setPage(1);
+      }
       setIsListening(false);
     };
-    recognition.onerror = () => setIsListening(false);
+
+    recognition.onerror = (event: any) => {
+      console.error("Voice Error:", event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        alert("Ní cần cấp quyền Micro trong cài đặt trình duyệt TV!");
+      }
+    };
+
     recognition.onend = () => setIsListening(false);
-    recognition.start();
+
+    try {
+      recognition.start();
+    } catch (e) {
+      setIsListening(false);
+    }
   }, []);
 
   const handleKeypress = useCallback((char: string) => {
@@ -163,6 +184,7 @@ export default function SearchPage() {
     <FocusContext.Provider value={focusKey}>
       <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white flex overflow-hidden`}>
         
+        {/* Sidebar */}
         <div className="w-[380px] bg-[#0A0A0A] p-8 flex flex-col border-r border-white/10 z-50">
           <div className="mb-6">
              <p className="text-[10px] font-black text-red-600 tracking-[4px] uppercase mb-3 italic">TÌM KIẾM TV</p>
@@ -188,6 +210,7 @@ export default function SearchPage() {
           </div>
         </div>
 
+        {/* Kết quả (3 Cột) */}
         <div className="flex-1 flex flex-col bg-[#050505] p-12 relative">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-4xl font-black italic uppercase tracking-tighter">
@@ -202,15 +225,14 @@ export default function SearchPage() {
 
           <div className="flex-1 overflow-hidden">
             {results.length > 0 ? (
-              // THAY ĐỔI 3: Lưới chỉ còn 3 cột để khớp với ITEMS_PER_PAGE=3
-              <div className="grid grid-cols-3 gap-x-10 gap-y-12 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="grid grid-cols-3 gap-x-12 gap-y-12 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {displayItems.map((m: any, index: number) => (
                   <SearchResultItem key={`${m.slug}-${page}-${index}`} movie={m} index={index} page={page} />
                 ))}
               </div>
             ) : !searching && (
               <div className="h-full w-full flex items-center justify-center opacity-10">
-                <p className="text-7xl font-black italic uppercase -rotate-3 tracking-tighter">NHẬP TÊN PHIM</p>
+                <p className="text-7xl font-black italic uppercase -rotate-3 tracking-tighter">VOICE SEARCH</p>
               </div>
             )}
           </div>
@@ -225,7 +247,7 @@ const SideBtn = memo(({ label, active, onClick, fk, isRed }: any) => {
   if (!active) return <div className="h-12 rounded-xl bg-zinc-900/40 flex items-center justify-center text-[8px] font-black text-zinc-700 opacity-30 uppercase">{label}</div>;
   return (
     <div ref={ref} className={`h-12 rounded-xl flex items-center justify-center text-[10px] font-black italic border-2 cursor-pointer ${
-      focused ? "bg-white text-black scale-105 border-white shadow-[0_0_30px_rgba(255,255,255,0.3)]" : isRed ? "bg-red-600 text-white border-red-500" : "bg-zinc-800 text-zinc-100 border-white/10"
+      focused ? "bg-white text-black scale-105 border-white shadow-lg" : isRed ? "bg-red-600 text-white border-red-500" : "bg-zinc-800 text-zinc-100 border-white/10"
     }`}>{label}</div>
   );
 });
