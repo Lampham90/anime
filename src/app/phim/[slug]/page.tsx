@@ -142,13 +142,12 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     };
   }, [isPlaying, exitPlayer]);
 
-  // --- [PLAYER CORE: TỐI ƯU HỦY BIẾN KỆT PHIM] ---
+  // --- [PLAYER CORE: CLEANUP TỐI ƯU] ---
   useEffect(() => {
     let hls: Hls | null = null;
     const video = videoRef.current;
 
     if (isPlaying && servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8 && video) {
-      // Dọn dẹp video trước khi nạp
       video.pause();
       video.currentTime = 0;
       video.removeAttribute("src");
@@ -276,18 +275,21 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return () => cancelAnimationFrame(frameId);
   }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer, slug]);
 
-  // --- [XỬ LÝ POSTER: KHẮC PHỤC LỖI KHÔNG HIỂN THỊ] ---
+  // --- [XỬ LÝ POSTER: FIX TRIỆT ĐỂ LỖI HIỂN THỊ] ---
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
-    // Ưu tiên poster_url cho đẹp, thumb_url làm fallback
-    const raw = movie.poster_url || movie.thumb_url || ""; 
-    if (!raw) return "";
-    
-    // Kiểm tra nếu URL đã có domain chưa, nếu chưa thì thêm domain của OPhim
-    let base = raw.startsWith('http') ? raw : `https://img.ophim.live/uploads/movies/${raw}`;
-    
-    // Sử dụng proxy wsrv.nl để force HTTPS và tránh lỗi CORS/Mixed Content
-    return `https://wsrv.nl/?url=${encodeURIComponent(base.replace("http://", "https://"))}&w=800&fit=cover&output=webp&q=80`;
+    let rawPath = movie.poster_url || movie.thumb_url || ""; 
+    if (!rawPath) return "";
+
+    let fullUrl = "";
+    if (rawPath.startsWith('http')) {
+      fullUrl = rawPath;
+    } else {
+      fullUrl = `https://img.ophim.live/uploads/movies/${rawPath}`;
+    }
+
+    fullUrl = fullUrl.replace("http://", "https://");
+    return `https://wsrv.nl/?url=${encodeURIComponent(fullUrl)}&w=800&fit=cover&output=webp&q=80`;
   }, [movie]);
 
   const episodeList = useMemo(() => (
@@ -315,8 +317,22 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black" />
             </div>
             <div className="relative z-10 w-full max-w-[1100px] px-10 flex gap-12 items-center transform-gpu animate-in fade-in duration-700">
-              <div className="w-[280px] flex-shrink-0 shadow-2xl rounded-[25px] overflow-hidden border border-white/10 aspect-[2/3] bg-zinc-900 transform-gpu">
-                {finalImgUrl && <img src={finalImgUrl} className="w-full h-full object-cover" alt="poster" />}
+              <div className="w-[280px] flex-shrink-0 shadow-2xl rounded-[25px] overflow-hidden border border-white/10 aspect-[2/3] bg-zinc-800 transform-gpu">
+                {finalImgUrl ? (
+                  <img 
+                    src={finalImgUrl} 
+                    className="w-full h-full object-cover animate-in fade-in duration-500" 
+                    alt="poster" 
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (movie?.poster_url && !target.src.includes('ophim1')) {
+                        target.src = `https://img.ophim1.com/uploads/movies/${movie.poster_url}`;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white/20 text-[10px] uppercase">No Poster</div>
+                )}
               </div>
               <div className="flex-1">
                 <div className="mb-4 opacity-50"><TVButton focusKey="BACK_HOME" name="← Trang chủ" onClick={() => router.push("/")} /></div>
