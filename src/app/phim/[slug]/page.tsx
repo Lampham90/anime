@@ -278,7 +278,7 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   // --- [XỬ LÝ POSTER: FIX TRIỆT ĐỂ LỖI HIỂN THỊ] ---
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
-    let rawPath = movie.poster_url || movie.thumb_url || ""; 
+    let rawPath = movie.thumb_url || movie.poster_url || ""; 
     if (!rawPath) return "";
 
     let fullUrl = "";
