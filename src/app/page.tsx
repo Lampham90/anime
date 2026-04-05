@@ -24,17 +24,7 @@ if (typeof window !== "undefined") {
 
 const montserrat = Montserrat({ subsets: ['vietnamese'], weight: ['900'] });
 
-const workerCode = `
-  self.onmessage = function(e) {
-    const { type, allMovies, page, limit } = e.data;
-    if (type === 'PROCESS_PAGE') {
-      const start = (page - 1) * limit;
-      self.postMessage({ items: allMovies.slice(start, start + limit) });
-    }
-  };
-`;
-
-// --- COMPONENT THẺ PHIM ---
+// --- COMPONENT THẺ PHIM (GIỮ NGUYÊN GIAO DIỆN) ---
 const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }: any) => {
   const router = useRouter();
   const isTop = index < 6;
@@ -53,7 +43,8 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
         return false;
       }
       if (dir === 'down' && index >= 6 && currentPage < totalPages) {
-        onPageChange(currentPage + 1, 'TOP', index - 6); return false;
+        onPageChange(currentPage + 1, 'TOP', index - 6); 
+        return false;
       }
       return true;
     }
@@ -64,7 +55,8 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
     if (!path) return "";
     let finalPath = path.startsWith('http') ? path : `https://img.ophim.live/uploads/movies/${path}`;
     finalPath = finalPath.replace("http://", "https://");
-    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=250&output=webp&q=70&il&atyp=vips`;
+    // Tối ưu hóa giải mã ảnh cho TV
+    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=250&output=webp&q=70&il`;
   }, [movie.slug]);
 
   return (
@@ -74,6 +66,7 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
           key={movie.slug}
           src={imgUrl} 
           loading="eager" 
+          decoding="async"
           alt="" 
           className="img-content"
           crossOrigin="anonymous"
@@ -83,7 +76,6 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
         {focused && <div className="focus-border-glow" />}
       </div>
       
-      {/* Container tiêu đề: Cố định 36px để giữ hàng lối thẳng 1px không lệch */}
       <div className="title-container">
         <p className="title-text">{movie.name}</p>
       </div>
@@ -129,7 +121,6 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
           color: #666; 
           font-size: 12px; 
           line-height: 1.2;
-          /* Xử lý xuống hàng tối đa 2 dòng */
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;  
@@ -144,13 +135,12 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   );
 });
 
-// --- TRANG CHỦ ---
+// --- TRANG CHỦ (TỐI ƯU LOAD DỮ LIỆU) ---
 export default function LightspeedHome() {
-  const [allMovies, setAllMovies] = useState<any[]>([]);
   const [currentItems, setCurrentItems] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(50); // Mặc định API thường có nhiều trang
   const [loading, setLoading] = useState(true);
-  const workerRef = useRef<Worker | null>(null);
   
   const { ref: pageRef, focusKey, focusSelf } = useFocusable({
     focusKey: 'HOME_PAGE',
@@ -158,36 +148,44 @@ export default function LightspeedHome() {
     isFocusBoundary: true
   });
 
-  useEffect(() => {
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    workerRef.current = new Worker(URL.createObjectURL(blob));
-    
-    workerRef.current.onmessage = (e) => { 
-      setCurrentItems(e.data.items); 
-      setLoading(false); 
+  // Hàm tải dữ liệu theo trang
+  const loadData = useCallback(async (page: number, targetPos?: { pos: string, col: number }) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`https://ch.3ks.workers.dev/v1/api/danh-sach/hoat-hinh?limit=12&page=${page}`).then(r => r.json());
+      const items = res?.data?.items || [];
+      
+      // Cập nhật tổng số trang nếu có từ API
+      if (res?.data?.params?.pagination?.totalItems) {
+        setTotalPages(Math.ceil(res.data.params.pagination.totalItems / 12));
+      }
+
+      setCurrentItems(items);
+      setLoading(false);
+
+      // Xử lý Focus sau khi render
       requestAnimationFrame(() => {
         const lastSlug = sessionStorage.getItem("last_slug");
-        if (lastSlug) {
+        if (lastSlug && !targetPos) {
           setFocus(`MOVIE_${lastSlug}`);
           sessionStorage.removeItem("last_slug");
-        } else if (e.data.items.length > 0) {
-          setFocus(`MOVIE_${e.data.items[0].slug}`);
+        } else if (targetPos) {
+          const targetIdx = targetPos.pos === 'TOP' ? targetPos.col : targetPos.col + 6;
+          if (items[targetIdx]) setFocus(`MOVIE_${items[targetIdx].slug}`);
+        } else if (items.length > 0) {
+          setFocus(`MOVIE_${items[0].slug}`);
         }
       });
-    };
-
-    fetch(`https://ch.3ks.workers.dev/v1/api/danh-sach/hoat-hinh?limit=600`)
-      .then(r => r.json())
-      .then(res => {
-        const items = res?.data?.items || [];
-        setAllMovies(items);
-        const savedPage = parseInt(sessionStorage.getItem("last_page") || "1");
-        setCurrentPage(savedPage);
-        workerRef.current?.postMessage({ type: 'PROCESS_PAGE', allMovies: items, page: savedPage, limit: 12 });
-      });
-
-    return () => workerRef.current?.terminate();
+    } catch (e) {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const savedPage = parseInt(sessionStorage.getItem("last_page") || "1");
+    setCurrentPage(savedPage);
+    loadData(savedPage);
+  }, [loadData]);
 
   useEffect(() => {
     if (!loading) focusSelf();
@@ -195,15 +193,8 @@ export default function LightspeedHome() {
 
   const changePage = useCallback((p: number, pos: string, col: number) => {
     setCurrentPage(p);
-    workerRef.current?.postMessage({ type: 'PROCESS_PAGE', allMovies: allMovies, page: p, limit: 12 });
-    requestAnimationFrame(() => {
-        const targetIdx = (p - 1) * 12 + (pos === 'TOP' ? col : col + 6);
-        const target = allMovies[targetIdx];
-        if (target) setFocus(`MOVIE_${target.slug}`);
-    });
-  }, [allMovies]);
-
-  const totalPages = useMemo(() => Math.ceil(allMovies.length / 12), [allMovies]);
+    loadData(p, { pos, col });
+  }, [loadData]);
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -235,7 +226,6 @@ export default function LightspeedHome() {
           </div>
         )}
 
-        {/* --- THANH TRẠNG THÁI 3 PHẦN --- */}
         {!loading && (
           <div className="absolute bottom-4 left-[5%] right-[5%] flex justify-between items-center opacity-20 font-black italic text-[11px] uppercase tracking-widest border-t border-white/5 pt-2">
             <div className="w-1/3 text-left">ANIME</div>
