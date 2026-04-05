@@ -54,10 +54,9 @@ const MovieCard = memo(({ movie, index, currentPage, totalPages, onPageChange }:
   const imgUrl = useMemo(() => {
     const path = movie.poster_url || movie.thumb_url || "";
     if (!path) return "";
+    // Kết nối thẳng tới server gốc của OPhim
     let finalPath = path.startsWith('http') ? path : `https://img.ophim.live/uploads/movies/${path}`;
-    finalPath = finalPath.replace("http://", "https://");
-    // Dùng JPG Progressive (il) & q=60 để TV giải mã nhẹ nhất có thể
-    return `https://wsrv.nl/?url=${encodeURIComponent(finalPath)}&w=220&output=jpg&q=60&il&atyp=vips`;
+    return finalPath.replace("http://", "https://");
   }, [movie.slug]);
 
   return (
