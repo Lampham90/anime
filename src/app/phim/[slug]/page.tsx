@@ -100,26 +100,28 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
   // --- [LOGIC THOÁT PLAYER VỀ CHI TIẾT] ---
   const exitPlayer = useCallback(() => {
     if (videoRef.current) {
-      if (videoRef.current.currentTime > 5) {
-        localStorage.setItem(`progress_${slug}_${currentEpIndex}`, videoRef.current.currentTime.toString());
+      const video = videoRef.current;
+      if (video.currentTime > 5) {
+        localStorage.setItem(`progress_${slug}_${currentEpIndex}`, video.currentTime.toString());
         localStorage.setItem(`last_ep_${slug}`, JSON.stringify({ epIdx: currentEpIndex, svIdx: activeServer }));
       }
-      videoRef.current.pause();
-      videoRef.current.removeAttribute('src'); 
-      videoRef.current.load();
+      video.pause();
+      video.removeAttribute('src'); 
+      video.load();
     }
     
-    setIsPlaying(false);
-    setShowQuickMenu(false);
-    setShowControls(false);
-
     if (hlsRef.current) { 
       hlsRef.current.destroy(); 
       hlsRef.current = null; 
     }
 
+    setIsPlaying(false);
+    setShowQuickMenu(false);
+    setShowControls(false);
+
     if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
-      document.exitFullscreen().catch(() => {});
+      const exitFs = document.exitFullscreen || (document as any).webkitExitFullscreen;
+      if (exitFs) exitFs.call(document).catch(() => {});
     }
 
     setTimeout(() => setFocus("MAIN_PLAY_BTN"), 250);
@@ -140,15 +142,26 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     };
   }, [isPlaying, exitPlayer]);
 
-  // Player Core
+  // --- [PLAYER CORE: TỐI ƯU HỦY BIẾN KỆT PHIM] ---
   useEffect(() => {
-    if (isPlaying && servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8 && videoRef.current) {
-      if (hlsRef.current) hlsRef.current.destroy();
-      const video = videoRef.current;
-      video.volume = 1.0;
+    let hls: Hls | null = null;
+    const video = videoRef.current;
 
-      const hls = new Hls({ enableWorker: true, maxBufferLength: 15, fastStartMaxDeferredLimit: 0.5 });
+    if (isPlaying && servers[activeServer]?.server_data[currentEpIndex]?.link_m3u8 && video) {
+      // Dọn dẹp video trước khi nạp
+      video.pause();
+      video.currentTime = 0;
+      video.removeAttribute("src");
+      video.load();
+
+      hls = new Hls({ 
+        enableWorker: true, 
+        maxBufferLength: 20, 
+        fastStartMaxDeferredLimit: 0.5,
+        autoStartLoad: true
+      });
       hlsRef.current = hls;
+
       hls.loadSource(servers[activeServer].server_data[currentEpIndex].link_m3u8);
       hls.attachMedia(video);
       
@@ -156,10 +169,28 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
         const savedTime = localStorage.getItem(`progress_${slug}_${currentEpIndex}`);
         if (savedTime) video.currentTime = parseFloat(savedTime);
         video.play().catch(() => {});
-        playerContainerRef.current?.requestFullscreen().catch(() => {});
+        if (playerContainerRef.current) playerContainerRef.current.requestFullscreen().catch(() => {});
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR: hls?.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR: hls?.recoverMediaError(); break;
+            default: exitPlayer(); break;
+          }
+        }
       });
     }
-  }, [isPlaying, currentEpIndex, activeServer, slug, servers]);
+
+    return () => {
+      if (hls) {
+        hls.detachMedia();
+        hls.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [isPlaying, currentEpIndex, activeServer, slug, servers, exitPlayer]);
 
   // Remote Control Logic
   useEffect(() => {
@@ -245,11 +276,18 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     return () => cancelAnimationFrame(frameId);
   }, [isPlaying, currentEpIndex, activeServer, servers, exitPlayer, slug]);
 
+  // --- [XỬ LÝ POSTER: KHẮC PHỤC LỖI KHÔNG HIỂN THỊ] ---
   const finalImgUrl = useMemo(() => {
     if (!movie) return "";
-    const raw = movie.thumb_url || movie.poster_url || ""; 
+    // Ưu tiên poster_url cho đẹp, thumb_url làm fallback
+    const raw = movie.poster_url || movie.thumb_url || ""; 
+    if (!raw) return "";
+    
+    // Kiểm tra nếu URL đã có domain chưa, nếu chưa thì thêm domain của OPhim
     let base = raw.startsWith('http') ? raw : `https://img.ophim.live/uploads/movies/${raw}`;
-    return `https://wsrv.nl/?url=${encodeURIComponent(base.replace("http://", "https://"))}&w=600&fit=cover&output=webp&q=80`;
+    
+    // Sử dụng proxy wsrv.nl để force HTTPS và tránh lỗi CORS/Mixed Content
+    return `https://wsrv.nl/?url=${encodeURIComponent(base.replace("http://", "https://"))}&w=800&fit=cover&output=webp&q=80`;
   }, [movie]);
 
   const episodeList = useMemo(() => (
@@ -270,7 +308,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
     <FocusContext.Provider value={focusKey}>
       <main ref={pageRef} className={`${montserrat.className} h-screen w-screen bg-black text-white overflow-hidden relative flex items-center justify-center transform-gpu`}>
         
-        {/* LAYER: CHI TIẾT PHIM (HIỆN KHI ISPLAYING = FALSE) */}
         {!isPlaying && (
           <>
             <div className="absolute inset-0 z-0">
@@ -278,8 +315,8 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
               <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black" />
             </div>
             <div className="relative z-10 w-full max-w-[1100px] px-10 flex gap-12 items-center transform-gpu animate-in fade-in duration-700">
-              <div className="w-[280px] flex-shrink-0 shadow-2xl rounded-[25px] overflow-hidden border border-white/10 aspect-[2/3] transform-gpu">
-                <img src={finalImgUrl} className="w-full h-full object-cover" alt="poster" />
+              <div className="w-[280px] flex-shrink-0 shadow-2xl rounded-[25px] overflow-hidden border border-white/10 aspect-[2/3] bg-zinc-900 transform-gpu">
+                {finalImgUrl && <img src={finalImgUrl} className="w-full h-full object-cover" alt="poster" />}
               </div>
               <div className="flex-1">
                 <div className="mb-4 opacity-50"><TVButton focusKey="BACK_HOME" name="← Trang chủ" onClick={() => router.push("/")} /></div>
@@ -309,7 +346,6 @@ export default function MovieDetail({ params }: { params: Promise<{ slug: string
           </>
         )}
 
-        {/* LAYER: TRÌNH PHÁT VIDEO (HIỆN KHI ISPLAYING = TRUE) */}
         {isPlaying && (
           <div ref={playerContainerRef} className="fixed inset-0 z-[99999] bg-black transform-gpu">
             <video ref={videoRef} playsInline className="w-full h-full object-contain" />
